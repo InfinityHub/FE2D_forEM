@@ -10,7 +10,9 @@ Welcome to FE2D_DomainDecop's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+.. topic:: Overview
+   
+   This is the documentation page for the FORTRAN code developed by Jianbo Long in support of research in domain decomposition methods at Prof. Ronald Haynes's group. For any questions, please contact me at jl7037@mun.ca.
 
 Indices and tables
 ==================
