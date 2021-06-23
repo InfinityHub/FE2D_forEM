@@ -24,11 +24,20 @@ Welcome to FE2D_DomainDecop's documentation!
 Get started
 ===========
 
+To run the code, please follow these steps:
+
 **Step 1**:
-   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see `Compilation`_.
+   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see `Compilation`_ below.
    
 **Step 2**:
-   Generate the mesh for the given 2-D problem. To do this, use the program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are provided to the code as part of input files.
+   Generate the mesh for the given 2-D problem. To do this, use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are provided to the code as part of input files.
+   
+**Step 3**:
+   Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in `Input files`_. Note that the code requires that **one** special file is passed to the program as a parameter during the running; that input file itself contains information of all other input files. 
+   .. code-block::
+   FE2D -iFWD_input.dat
+   
+   In the above, "FE2D" in the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special file.
    
 Compilation
 -----------
