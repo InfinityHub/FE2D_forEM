@@ -33,7 +33,7 @@ To run the code, follow these steps:
    Generate the mesh for the given 2-D problem. To do this, use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are provided to the code as part of input files.
    
 **Step 3**:
-   Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in `Input files`_. Note that the code requires that **one special file** is passed to the (compiled) program as an argument during the running; that input file itself contains information of all other input files:
+   Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in :ref:`label-input-files`. Note that the code requires that **one special file** is passed to the (compiled) program as an argument during the running; that input file itself contains information of all other input files:
    
    .. code-block::
 
@@ -44,6 +44,7 @@ To run the code, follow these steps:
 Compilation
 -----------
 
+.. _label-input-files:
 Input files
 -----------
 
