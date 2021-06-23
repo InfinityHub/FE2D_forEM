@@ -91,6 +91,13 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/EM_generic_parameter.in
    
+File ``mesh_parameter.in``
+^^^^^^^^^^^^^^^^^^
+
+An example template is:
+
+   .. literalinclude:: /MT2D_3layer (example 1)/mesh_parameter.in
+   
 Output files
 ------------
 
