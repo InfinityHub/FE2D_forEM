@@ -82,7 +82,7 @@ File ``modelling_parameter.in``
 
 An example template is:
 
-   .. code-block::
+   .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
 
 Output files
