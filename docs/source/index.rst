@@ -52,7 +52,7 @@ Input files
 There are a few input files required for running the forward solvers. 
 
 File ``FWD_input.dat``
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^
 
 This is the special file passed to the program when running the code. A template is given as:
 
@@ -69,28 +69,28 @@ This special file in the above example has five parameters (all parameter names 
    * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
 File ``modelling_parameter.in``
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
 File ``EM_generic_parameter.in``
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/EM_generic_parameter.in
 
 File ``MT_parameter.in``
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/MT_parameter.in
 
 File ``mesh_parameter.in``
-^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
