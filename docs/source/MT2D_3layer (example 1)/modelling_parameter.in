@@ -1,0 +1,24 @@
+# a list of general parameters for EM modelling (format in each line: Name Value)
+    DataType            EM     # geophysical data type, options: EM, GT
+    DiscretMode         FE     # options: MESHFREE, FE, ANA
+    PDEtype             3      #  1 (A-phi), 2 (3D H-field),  3 (2D MT eqs)
+    spaceDim            2      #  2 or 3
+    
+# --data output control
+#    Measurement_file    '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/measurement_sites.node'     # a .node file containing pre-defined measurement sites
+    outputfilepath      '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/FE_out/global/'
+    WriteAphi_data      f
+    WriteDivA_data      f         # selected potential divergence calculation
+    WriteVisual_data    f         # selected 2-D visualization calculation
+    WriteXYZ_paraview   f
+    
+# -- meshfree numerical method (optional)
+ 
+# --- finite element method (optional, needed for meshfree for now)
+    FEdegree            1
+    global_FE_search    f
+
+# --- linear system solver
+    Iter_solver         f
+    iter_solver_name    ''
+    solver_verbose      f

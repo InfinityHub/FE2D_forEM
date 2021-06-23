@@ -1,0 +1,13 @@
+# a list of general parameters for EM survey method (Name Value)
+EMsurveyType      'MT'    ! CSEM or MT
+SourceType        'MT2D'    ! AED, LOOP, VMD, DC, MT, MT2D
+nfreq              5      ! NO. of frequencies
+freq               0.01   ! Only one frequency case, unit Hz
+ModelCode          ''                  
+
+#-- a list of mutiple frequencies, if nfreq > 1
+FreqListFile       '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/list_frequency.txt'  
+
+#-- a list of conductivities (S/m) for different mesh regions     
+condRegionFile     '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/list_regional_cond.txt'     
+

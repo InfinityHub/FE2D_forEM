@@ -1,0 +1,10 @@
+#  a list of MT (magnetotelluric) modelling parameters
+MT_boundary_model        '1D'      ! 'HALF' or '1D'; the model type of the background MT model for boundary value computation
+nlayer    1                          ! only subsurface layers count, the # of layers found in the absci_file takes precedence over this value
+
+# if boundary_model is multi-layer, define the 1D model
+#-- a list of z-coordinates of interior interfaces (m) for regions     
+MT1D_absciFile     '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/SUB_3/list_MT1D_interfaces.txt'
+
+#-- a list of conductivities (S/m) for subsurface regions     
+MT1D_condFile     '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/SUB_3/list_MT1D_cond.txt'

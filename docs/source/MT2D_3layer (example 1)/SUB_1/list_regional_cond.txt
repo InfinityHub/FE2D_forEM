@@ -1,0 +1,3 @@
+#  conductivities (S/m) for different mesh regions (including air layer)
+L  1
+1  1.e-8

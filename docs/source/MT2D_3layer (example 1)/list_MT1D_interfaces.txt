@@ -1,0 +1,4 @@
+#  z-absci (metre) for all interior interfaces in the 1D model (+z is upward; including air-earth interface)
+L  1
+1  0.0
+##2  -5000.0
