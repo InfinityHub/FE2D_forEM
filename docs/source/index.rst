@@ -34,7 +34,8 @@ To run the code, please follow these steps:
    
 **Step 3**:
    Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in `Input files`_. Note that the code requires that **one** special file is passed to the program as a parameter during the running; that input file itself contains information of all other input files. 
-   .. code-block::
+   
+.. code-block::
    FE2D -iFWD_input.dat
    
    In the above, "FE2D" in the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special file.
