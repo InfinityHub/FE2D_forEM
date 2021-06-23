@@ -22,10 +22,10 @@ Welcome to FE2D_DomainDecop's documentation!
     :depth: 3
     
 Get started
------------
+===========
 
-** step 1 **:
-   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see :ref:`Compilation`.
+**Step 1**:
+   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see `Compilation`_.
    
 Compilation
 -----------
