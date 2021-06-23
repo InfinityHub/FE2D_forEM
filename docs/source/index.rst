@@ -54,15 +54,15 @@ File FWD_input.dat
 
 This is the special file passed to the program when running the code. A template is given as:
 
-.. code-block::
-   # --put all input files for the forward modelling in one place. This file is the direct input file for modelling program.
-   # -- "Name Value" format; "value" has the file name which can include the path info.
+   .. code-block::
+      # --put all input files for the forward modelling in one place. This file is the direct input file for modelling program.
+      # -- "Name Value" format; "value" has the file name which can include the path info.
 
-   input_path          "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/"    # path info for all file defined here (if they are in one place)  
-   input_modelling     "modelling_parameter.in"       # general modelling parameters
-   input_EM_generic    "EM_generic_parameter.in"
-   input_mesh          "mesh_parameter.in"
-   input_MT            "MT_parameter.in"      # provide this if doing MT modelling
+      input_path          "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/"    # path info for all file defined here (if they are in one place)  
+      input_modelling     "modelling_parameter.in"       # general modelling parameters
+      input_EM_generic    "EM_generic_parameter.in"
+      input_mesh          "mesh_parameter.in"
+      input_MT            "MT_parameter.in"      # provide this if doing MT modelling
 
 Output files
 ------------
