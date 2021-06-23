@@ -69,13 +69,13 @@ This is the special file passed to the program when running the code. A template
 
 As we can see, a general rule is that any texts after "#" are considered as comments. The information in the file is listed in a "**Name Value**" format: the "**Name**" is the parameter name recognized by the code and is not allowed to change; and "**Value**" is the value of that parameter. There should be at least a space between "**Name**" and "**Value**".
 
-This special file in the above example has five parameters (all are case-sensitive):
+This special file in the above example has five parameters (all parameter names are case-sensitive):
 
-   * ``input\_path``: the path for all other input files, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input\_modelling``
-   * ``input\_modelling``
-   * ``input\_EM\_generic``
-   * input\_mesh
-   * input\_MT
+   * ``input_path``: the path for all other input files defined here, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input_modelling`` should be found using this path.
+   * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
+   * ``input_EM_generic``: its value is a file name; that file contains general parameters related to EM problems (MT is a special case of EM).
+   * ``input_mesh``: its value is a file name; that file contains information of mesh files used by the code.
+   * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
 Output files
 ------------
