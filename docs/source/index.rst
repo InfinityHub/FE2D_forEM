@@ -49,7 +49,7 @@ Input files
 
 There are a few input files required for running the forward solvers. 
 
-File FWD_input.dat
+File FWD\_input.dat
 ^^^^^^^^^^^^^^^^^^
 
 This is the special file passed to the program when running the code. A template is given as:
@@ -59,11 +59,15 @@ This is the special file passed to the program when running the code. A template
       # --put all input files for the forward modelling in one place. This file is the direct input file for modelling program.
       # -- "Name Value" format; "value" has the file name which can include the path info.
 
-      input_path          "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/"    # path info for all file defined here (if they are in one place)  
+      input_path          "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/"    # path info for all files defined here (if they are in one place)  
       input_modelling     "modelling_parameter.in"       # general modelling parameters
       input_EM_generic    "EM_generic_parameter.in"
       input_mesh          "mesh_parameter.in"
       input_MT            "MT_parameter.in"      # provide this if doing MT modelling
+
+As we can see, a general rule is that any texts after "#" are considered as comments. The information in the file is listed in a "**Name Value**" format: the "Name" is the parameter name recognized by the code and is not allowed to change; and "Value" is the value of that parameter. This special file in the above example has five parameters:
+   * input\_path
+   * input\_modelling
 
 Output files
 ------------
