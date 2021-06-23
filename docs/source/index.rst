@@ -45,6 +45,7 @@ Compilation
 -----------
 
 .. _label-input-files:
+
 Input files
 -----------
 
