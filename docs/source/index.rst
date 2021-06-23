@@ -27,6 +27,9 @@ Get started
 **Step 1**:
    Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see `Compilation`_.
    
+**Step 2**:
+   Generate the mesh for the given 2-D problem. To do this, use the program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are provided to the code as part of input files.
+   
 Compilation
 -----------
 
