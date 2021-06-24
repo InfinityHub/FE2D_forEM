@@ -16,7 +16,7 @@ Welcome to FE2D_DomainDecop's documentation!
 
    Currently, the FORTRAN code only acts as a "forward solver" in a domain decomposition algorithm, i.e., the code only computes the solution to a given partial differential equation (PDE) over the global domain or a local subdomain of the problem. For computing the global solution, an initial boundary condition is required; whereas for a subdomain solution, the boundary values of the subdomain are extracted from the global solution and the initial boundary values.
    
-   The FORTRAN code uses a finite element method and solves only 2-D PDEs. The finite element method implemented here uses unstructured triangular meshes in the spatial discretization of the problem domain. In this code, only Maxwell's equations for 2-D magnetotelluric (MT) problems are solved.
+   The FORTRAN code uses a finite element method and solves only 2-D PDEs. The finite element method implemented here uses unstructured triangular meshes in the spatial discretization of the problem domain. In the current code, only Maxwell's equations for 2-D magnetotelluric (MT) problems are solved.
    
 .. contents:: 
     :depth: 3
@@ -39,7 +39,7 @@ To run the code, follow these steps:
 
       >>> FE2D -iFWD_input.dat
    
-   In the above, "FE2D" is the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special input file, and "-i" is one of the flags of the program.
+   In the above, "FE2D" is the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special input file, and "-i" is one of the flags of the program and is used to specify the name of the input file.
    
 Compilation
 -----------
@@ -49,7 +49,7 @@ Compilation
 Input files
 -----------
 
-There are a few input files required for running the forward solvers. 
+There are a few input files required for running the forward solver. 
 
 File ``FWD_input.dat``
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -66,7 +66,7 @@ This special file in the above example has five parameters (all parameter names 
    * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
    * ``input_EM_generic``: its value is a file name; that file contains general parameters related to EM problems (MT is a special case of EM).
    * ``input_mesh``: its value is a file name; that file contains information of mesh files used by the code.
-   * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
+   .. * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
 File ``modelling_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -82,12 +82,6 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/EM_generic_parameter.in
 
-File ``MT_parameter.in``
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-An example template is:
-
-   .. literalinclude:: /MT2D_3layer (example 1)/MT_parameter.in
 
 File ``mesh_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
