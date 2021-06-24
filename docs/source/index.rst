@@ -141,8 +141,8 @@ An example template is:
 Output files
 ------------
 
-Indices and tables
-==================
+Indices and tables (coming up)
+==============================
 
 * :ref:`genindex`
 * :ref:`modindex`
