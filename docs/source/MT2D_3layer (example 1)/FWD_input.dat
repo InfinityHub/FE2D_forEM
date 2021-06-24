@@ -5,5 +5,3 @@ input_path          "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/"  
 input_modelling     "modelling_parameter.in"       # general modelling parameters
 input_EM_generic    "EM_generic_parameter.in"
 input_mesh          "mesh_parameter.in"
-input_MT            "MT_parameter.in"      # provide this if doing MT modelling
-
