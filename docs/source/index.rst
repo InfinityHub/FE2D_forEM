@@ -44,11 +44,14 @@ To run the code, follow these steps:
 Compilation
 -----------
 
-   
+
+.. _label-mesh-generation:
+
 Mesh generation
 ---------------
 
-The required mesh files for the code are .node, .ele, .edge and .neigh files generated from `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_. The file names and their locations are defined in :ref:`label-mesh-parameter`.
+The required mesh files for the code are .node, .ele, .edge and .neigh files generated from `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_. The file names and their locations are defined in :ref:`label-mesh-parameter`. For the requirements of the FORTRAN code, each region needs to be assigned an integer marker when generating the mesh files; for details of regional markers, see :ref:`label-mesh-parameter`.
+
 
 .. _label-input-files:
 
@@ -94,6 +97,8 @@ An example template is:
 
 In this file, the regular frequency (in Hz) and a conductivity list file name need to be defined. The file name can include an absolute or relative path. For the content of the conductivity list file, see :ref:`label-cond-file`.
 
+
+
 .. _label-mesh-parameter:
 
 File ``mesh_parameter.in``
@@ -103,6 +108,11 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/mesh_parameter.in
 
+The definitions of the above parameters are:
+   * **``nregion``**: integer parameter; number of homogeneous regions of conductivity in the mesh.
+   * **``regionMarkFile``**: the file name of lists of regional markers in the mesh. Each homogenous region is assigned an integer marker in order to distinguish itself from other regions. The order of listing the markers can be specified by the user when generating the mesh. 
+   * **``meshfilepath``**: string parameter; the path of all mesh files (see :ref:`label-mesh-generation`).
+   * **``basefilename``**: string parameter; the "base" part of the file names of mesh files. By default, all mesh files should share this part in their names. For example, if the node file is named "foo.node", then ``basefilename`` should be "foo". 
 
 
 .. _label-cond-file:
@@ -114,7 +124,7 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/list_regional_cond.txt
    
-In this file, the conductivities (i.e., material properties, unit: S/m) of different uniform regions are defined. The first line must begin with "L", which is followed by the number of actual regions in the mesh/problem domain. In this example, there are 3 regions in the mesh. Subsequent lines list the conductivity of each region. The order of this list must be the same order that is used to define different regions during meshing.
+In this file, the conductivities (i.e., material properties, unit: S/m) of different uniform regions are defined. The first line must begin with "L", which is followed by the number of actual regions in the mesh/problem domain. In this example, there are 3 regions in the mesh. Subsequent lines list the conductivity of each region. The order of this list must be the same order that is used to define different regions (see :ref:`label-mesh-parameter`) during meshing.
 
 Output files
 ------------
