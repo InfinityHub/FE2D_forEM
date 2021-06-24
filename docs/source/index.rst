@@ -68,12 +68,16 @@ This special file in the above example has five parameters (all parameter names 
    * ``input_mesh``: its value is a file name; that file contains information of mesh files used by the code.
    .. * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
+All paths and file names should be double or single quoted.
+
 File ``modelling_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
+
+For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BICGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter `Iter_solver` is "f" (i.e., false), then a direct solver will be used.
 
 File ``EM_generic_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -82,6 +86,7 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/EM_generic_parameter.in
 
+In this file, the regular frequency (in Hz) and a conductivity list file name need to be defined. The file name can include an absolute or relative path. For the content of the conductivity list file, see :ref:`label-cond-file`.
 
 File ``mesh_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -89,7 +94,20 @@ File ``mesh_parameter.in``
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/mesh_parameter.in
+
+
+
+.. _label-cond-file:
+
+File ``list_regional_cond.txt``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+An example template is:
+
+   .. literalinclude:: /MT2D_3layer (example 1)/list_regional_cond.txt
    
+In this file, the conductivities (i.e., material properties, unit: S/m) of different uniform regions are defined. The first line must begin with "L", which is followed by the number of actual regions in the mesh/problem domain. In this example, there are 3 regions in the mesh. Subsequent lines list the conductivity of each region. The order of this list must be the same order that is used to define different regions during meshing.
+
 Output files
 ------------
 
