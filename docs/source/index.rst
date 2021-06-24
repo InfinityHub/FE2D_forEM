@@ -60,10 +60,10 @@ Input files
 
 There are a few input files required for running the forward solver. 
 
-File ``FWD_input.dat``
-^^^^^^^^^^^^^^^^^^^^^^
+``FWD_input.dat``
+^^^^^^^^^^^^^^^^^^^
 
-This is the special file passed to the program when running the code. A template is given as:
+This is the special file passed to the program when running the code. A template of the file is given as:
 
    .. literalinclude:: /MT2D_3layer (example 1)/FWD_input.dat
 
@@ -79,17 +79,17 @@ This special file in the above example has five parameters (all parameter names 
 
 All paths and file names should be double or single quoted.
 
-File ``modelling_parameter.in``
+``modelling_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-An example template is:
+An example template of the file is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
 For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used.
 
-File ``EM_generic_parameter.in``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``EM_generic_parameter.in``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
@@ -101,8 +101,8 @@ In this file, the regular frequency (in Hz) and a conductivity list file name ne
 
 .. _label-mesh-parameter:
 
-File ``mesh_parameter.in``
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+``mesh_parameter.in``
+^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
@@ -112,13 +112,13 @@ The definitions of the above parameters are:
    * ``nregion``: integer parameter; number of homogeneous regions of conductivity in the mesh.
    * ``regionMarkFile``: the file name of lists of regional markers in the mesh. Each homogenous region is assigned an integer marker in order to distinguish itself from other regions. The order of listing the markers can be specified by the user when generating the mesh. See :ref:`label-marker-file` for an example of this file.
    * ``meshfilepath``: string parameter; the path of all mesh files (see :ref:`label-mesh-generation`).
-   * ``basefilename`` string parameter; the "base" part of the file names of mesh files. By default, all mesh files should share this part in their names. For example, if the node file is named "foo.node", then ``basefilename`` should be "foo". 
+   * ``basefilename`` string parameter; the "base" part of the file names of mesh files. By default, all mesh files generated using the above-mentioned external program should share this part in their names. For example, if the node file is named "foo.node", then ``basefilename`` should be "foo". 
 
 
 .. _label-cond-file:
 
-File ``list_regional_cond.txt``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``list_regional_cond.txt``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
@@ -130,8 +130,8 @@ In this file, the conductivities (i.e., material properties, unit: S/m) of diffe
 
 .. _label-marker-file:
 
-File ``list_regionMark.txt``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``list_regionMark.txt``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 An example template is:
 
