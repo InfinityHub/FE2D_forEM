@@ -44,6 +44,12 @@ To run the code, follow these steps:
 Compilation
 -----------
 
+   
+Mesh generation
+---------------
+
+The required mesh files for the code are .node, .ele, .edge and .neigh files generated from `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_. The file names and their locations are defined in :ref:`label-mesh-parameter`.
+
 .. _label-input-files:
 
 Input files
@@ -77,7 +83,7 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
-For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BICGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter `Iter_solver` is "f" (i.e., false), then a direct solver will be used.
+For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used.
 
 File ``EM_generic_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -87,6 +93,8 @@ An example template is:
    .. literalinclude:: /MT2D_3layer (example 1)/EM_generic_parameter.in
 
 In this file, the regular frequency (in Hz) and a conductivity list file name need to be defined. The file name can include an absolute or relative path. For the content of the conductivity list file, see :ref:`label-cond-file`.
+
+.. _label-mesh-parameter:
 
 File ``mesh_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
