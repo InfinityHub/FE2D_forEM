@@ -41,8 +41,8 @@ To run the code, follow these steps:
    
    In the above, "FE2D" is the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special input file, and "-i" is one of the flags of the program and is used to specify the name of the input file.
    
-Compilation
------------
+Compilation (coming up)
+-----------------------
 
 
 .. _label-mesh-generation:
@@ -138,8 +138,8 @@ An example template is:
    .. literalinclude:: /MT2D_3layer (example 1)/list_regionMark.txt
    
    
-Output files
-------------
+Output files (coming up)
+------------------------
 
 Indices and tables (coming up)
 ==============================
