@@ -27,10 +27,10 @@ Get started
 To run the code, follow these steps:
 
 **Step 1**:
-   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see `Compilation`_ below.
+   Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see :ref:`label-section-compile` below.
    
 **Step 2**:
-   Generate the mesh for the given 2-D problem. To do this, use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are provided to the code as part of input files.
+   Generate the mesh for the given 2-D problem. To do this, use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are then provided to the code as part of input files.
    
 **Step 3**:
    Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in :ref:`label-input-files`. Note that the code requires that **one special file** is passed to the (compiled) program as an argument during the running; that input file itself contains information of all other input files:
@@ -41,6 +41,9 @@ To run the code, follow these steps:
    
    In the above, "FE2D" is the name of the compiled FORTRAN program, "FWD_input.dat" is the name of the special input file, and "-i" is one of the flags of the program and is used to specify the name of the input file.
    
+
+.. _label-section-compile:
+
 Compilation (coming up)
 -----------------------
 
@@ -67,9 +70,9 @@ This is the special file passed to the program when running the code. A template
 
    .. literalinclude:: /MT2D_3layer (example 1)/FWD_input.dat
 
-As we can see, a general rule is that any texts after "#" are considered as comments. The information in the file is listed in a "**Name Value**" format: the "**Name**" is the parameter name recognized by the code and is not allowed to change; and "**Value**" is the value of that parameter. There should be at least a space between "**Name**" and "**Value**".
+As we can see, a general rule is that any texts after "#" are considered as comments. The information in the file is listed in a "**Name Value**" format: "**Name**" is the parameter name recognized by the code and is not allowed to change; and "**Value**" is the value of that parameter. There should be at least a space between "**Name**" and "**Value**".
 
-This special file in the above example has five parameters (all parameter names are case-sensitive):
+This special file in the above example has five string parameters (i.e., parameter value should be a string) and all parameter names are case-sensitive:
 
    * ``input_path``: the path for all other input files defined here, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input_modelling`` should be found using this path.
    * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
