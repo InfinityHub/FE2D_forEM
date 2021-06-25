@@ -1,0 +1,480 @@
+MODULE linear_system_equation_data
+  ! Author: Jianbo Long, December, 2018
+  USE float_precision, ONLY: DPR, CDPR
+  USE mesh_concatenate_module, ONLY: ndof
+  USE derived_data_module, ONLY: dofs
+  USE FORTRAN_generic, ONLY: print_general_msg
+  IMPLICIT NONE
+  PRIVATE
+
+  TYPE bandMatrix_cmplx_cls
+     ! store a matrix's non zeros in a row-by-column style. Each row only has non-zeros
+     ! , the number of which can be different from row to row, of the original corresponding row.
+     COMPLEX(CDPR),ALLOCATABLE :: amat(:)
+     INTEGER,ALLOCATABLE :: jca(:)    ! column index in the global matrix
+  end type bandMatrix_cmplx_cls
+
+  TYPE bandMatrix_real_cls
+     REAL(DPR),ALLOCATABLE :: amat(:)
+     INTEGER,ALLOCATABLE :: jca(:)    ! column index in the global matrix
+  end type bandMatrix_real_cls
+
+
+  TYPE(bandMatrix_cmplx_cls),ALLOCATABLE :: EM_matrix_band(:)
+
+  TYPE(bandMatrix_real_cls),ALLOCATABLE :: gt_matrix_band(:)
+
+  TYPE(bandMatrix_real_cls),ALLOCATABLE :: MatBandOne(:), MatBandLapPhi(:),&
+       MatBand_div_resis_grad(:), MatBand_mu(:), MatBand_dxdz(:)
+
+  ! coefficient matrices in COOrdinate format assembled using various numerical methods
+  ! complex version
+  COMPLEX(CDPR),ALLOCATABLE :: coef_coo_mat(:), EM_RHS(:,:), EM_solution(:,:)
+  INTEGER,ALLOCATABLE :: coef_coo_ia(:), coef_coo_jca(:)
+  ! real version
+  REAL(DPR),ALLOCATABLE :: rcoef_coo_mat(:), gt_RHS(:,:), gt_solution(:,:)
+  INTEGER,ALLOCATABLE :: rcoef_coo_ia(:), rcoef_coo_jca(:)
+
+  ! public data
+  PUBLIC :: EM_matrix_band, coef_coo_mat, coef_coo_ia, coef_coo_jca, EM_RHS, EM_solution
+  PUBLIC :: gt_matrix_band, rcoef_coo_mat, rcoef_coo_ia, rcoef_coo_jca, gt_RHS, gt_solution
+  PUBLIC :: MatBandOne, MatBandLapPhi, MatBand_div_resis_grad, MatBand_mu, MatBand_dxdz
+  ! public subroutines
+  PUBLIC :: initialize_matrices_operator, &
+       initialize_matrices_EM_RHS, freeMemory_bandMatrix_EM, freeMemory_cooMatrix_EM, &
+       initialize_matrices_gt_RHS, freeMemory_bandMatrix_gt, freeMemory_cooMatrix_gt, &
+       convert_bandMatrix_to_COO_matrix, assemble_LinearSystem_concatenate,&
+       solve_the_linear_system
+
+
+CONTAINS
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE initialize_matrices_operator()
+    ! Only modify the data declared in this module
+    ! Should be called before calling any other subroutines from this module
+    ! On input:
+    !    -- the # of dofs. For now, the boundary dofs in the BVPs (boundary value problems) are also included.
+    !    ndof * nequations = dimension of linear system.
+    IMPLICIT NONE
+    CALL release_matrices_operator()
+    ALLOCATE( MatBandOne(ndof) )
+    ALLOCATE( MatBandLapPhi(ndof) )
+    ALLOCATE( MatBand_div_resis_grad(ndof) )
+    ALLOCATE( MatBand_mu(ndof) )
+    ALLOCATE( MatBand_dxdz(ndof) )
+    RETURN
+  end SUBROUTINE initialize_matrices_operator
+
+  SUBROUTINE release_matrices_operator()
+    IMPLICIT NONE
+    IF( ALLOCATED(MatBandOne) )  DEALLOCATE( MatBandOne )
+    IF( ALLOCATED(MatBandLapPhi) )  DEALLOCATE( MatBandLapPhi )
+    IF( ALLOCATED(MatBand_div_resis_grad) )  DEALLOCATE( MatBand_div_resis_grad )
+    IF( ALLOCATED(MatBand_mu) )  DEALLOCATE( MatBand_mu )
+    IF( ALLOCATED(MatBand_dxdz) )  DEALLOCATE( MatBand_dxdz )
+    RETURN
+  end SUBROUTINE release_matrices_operator
+
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+  SUBROUTINE assemble_LinearSystem_concatenate()
+    ! Choose to assemble the linear system of equations for which kind of
+    !  continuous PDEs.
+    !
+    USE modelling_parameter, ONLY: modelling
+
+    IMPLICIT NONE
+    IF( TRIM(ADJUSTL(modelling%DataType)) == 'CM' )  THEN
+       CALL assemble_LinearSystem_2DMT_TE()
+    ELSE
+       CALL assemble_LinearSystem_2D_mapping()
+    END IF
+    RETURN
+  end SUBROUTINE assemble_LinearSystem_concatenate
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE assemble_LinearSystem_2D_mapping()
+    ! assemble the global coefficient matrix for
+    !   2-D surface mapping equation; D = dxdz
+    !
+    ! Real-valued
+    IMPLICIT NONE
+    INTEGER  :: it, nnz
+    CALL print_general_msg('Assembling linear system of equations for 2-D surface mapping')
+
+    IF( ALLOCATED(gt_matrix_band) )  DEALLOCATE( gt_matrix_band )
+    ! Determine the dimension of the linear system
+    ALLOCATE( gt_matrix_band( ndof * 1)  )
+
+    ! loop through dofs
+    DO it = 1, ndof
+       IF( ALLOCATED(gt_matrix_band(it)%amat) )  DEALLOCATE( gt_matrix_band(it)%amat )
+       IF( ALLOCATED(gt_matrix_band(it)%jca) )  DEALLOCATE( gt_matrix_band(it)%jca )
+
+       IF( dofs(it)%bud == 1 )  THEN
+          ! boundary DOF case
+          ALLOCATE( gt_matrix_band(it)%amat( 1 )  )
+          ALLOCATE( gt_matrix_band(it)%jca( 1 )  )
+
+          gt_matrix_band(it)%amat = 1.0
+          gt_matrix_band(it)%jca = it
+       ELSE
+
+          ! for \phi in the eq (only one unknown quantity)
+          ALLOCATE( gt_matrix_band(it)%amat( nnz ) )
+          ALLOCATE( gt_matrix_band(it)%jca( nnz ) )
+
+          gt_matrix_band(it)%amat = 0.0
+          gt_matrix_band(it)%jca = 0
+
+          ! only one scalar equation (1 differential operator: D=dxdz)
+          gt_matrix_band(it)%amat = MatBand_dxdz(it)%amat
+          gt_matrix_band(it)%jca = MatBandOne(it)%jca
+       ENDIF
+
+    end DO
+
+    CALL convert_bandMatrix_to_COO_matrix('UNSYM')
+    CALL freeMemory_bandMatrix_gt()
+
+    RETURN
+  end SUBROUTINE assemble_LinearSystem_2D_mapping
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE assemble_LinearSystem_2DMT_TE()
+    ! assemble the global coefficient matrix for
+    !   2-D MT EQUATION (TE mode) 
+    !   after submatrices in discretizing various differential operators are available
+    ! Complex-valued
+    !
+    USE constants_module, ONLY: cmpx_one, cmpx_i, cmpx_zero
+    USE modelling_parameter, ONLY: EM_generic
+
+    IMPLICIT NONE
+    INTEGER  :: it, nnz
+    ASSOCIATE( omega => EM_generic%omega )
+
+      CALL print_general_msg('Assembling linear system of equations for 2-D MT (TE)')
+
+      ! for multiple frequencies case
+      IF( ALLOCATED(EM_matrix_band) )  DEALLOCATE( EM_matrix_band )
+      ! Determine the dimension of the linear system
+      IF( .NOT. ALLOCATED(EM_matrix_band) )  ALLOCATE( EM_matrix_band( ndof * 1)  )
+
+      ! loop through dofs
+      DO it = 1, ndof
+         IF( ALLOCATED(EM_matrix_band(it)%amat) )  DEALLOCATE( EM_matrix_band(it)%amat )
+         IF( ALLOCATED(EM_matrix_band(it)%jca) )  DEALLOCATE( EM_matrix_band(it)%jca )
+
+         IF( dofs( it )%bud == 1 )  THEN
+            ! boundary node case
+            ALLOCATE( EM_matrix_band(it)%amat( 1 )  )
+            ALLOCATE( EM_matrix_band(it)%jca( 1 )  )
+            EM_matrix_band(it)%amat = CMPX_ONE
+            EM_matrix_band(it)%jca = it
+         ELSE
+
+            nnz = SIZE( MatBandOne(it)%jca )
+            ! for Ey in the eq (only one unknown quantity)
+            ALLOCATE( EM_matrix_band(it)%amat( nnz ) )
+            ALLOCATE( EM_matrix_band(it)%jca( nnz ) )
+
+            EM_matrix_band(it)%amat = cmpx_zero
+            EM_matrix_band(it)%jca = 0
+            ! only one scalar equation (two differential operators: D=Laplacian and D=1)
+            EM_matrix_band(it)%amat = MatBandLapPhi(it)%amat * CMPX_ONE - omega * MatBandOne(it)%amat * CMPX_I
+            EM_matrix_band(it)%jca = MatBandOne(it)%jca
+         ENDIF
+
+      end DO
+
+      CALL convert_bandMatrix_to_COO_matrix('UNSYM')
+      CALL freeMemory_bandMatrix_EM()
+      !CALL release_matrices_operator()
+    end ASSOCIATE
+
+    RETURN
+  end SUBROUTINE assemble_LinearSystem_2DMT_TE
+
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE assemble_LinearSystem_2DMT_TM()
+    ! assemble the global coefficient matrix for
+    !   2-D MT EQUATION ( TM) 
+    !   after submatrices in discretizing various differential operators are available
+    !
+    ! Complex-valued
+    !
+    USE constants_module, ONLY: cmpx_one, cmpx_i, cmpx_zero
+    USE modelling_parameter, ONLY: EM_generic
+
+    IMPLICIT NONE
+    INTEGER  :: it, nnz
+    ASSOCIATE( omega => EM_generic%omega )
+
+      CALL print_general_msg('Assembling linear system of equations for 2-D MT (TM)')
+
+      ! for multiple frequencies case
+      IF( ALLOCATED(EM_matrix_band) )  DEALLOCATE( EM_matrix_band )
+      ! Determine the dimension of the linear system
+      IF( .NOT. ALLOCATED(EM_matrix_band) )  ALLOCATE( EM_matrix_band( ndof * 1)  )
+
+      ! loop through dofs
+      DO it = 1, ndof
+         IF( ALLOCATED(EM_matrix_band(it)%amat) )  DEALLOCATE( EM_matrix_band(it)%amat )
+         IF( ALLOCATED(EM_matrix_band(it)%jca) )  DEALLOCATE( EM_matrix_band(it)%jca )
+
+         IF( dofs( it )%bud == 1 )  THEN
+            ! boundary node case
+            ALLOCATE( EM_matrix_band(it)%amat( 1 )  )
+            ALLOCATE( EM_matrix_band(it)%jca( 1 )  )
+
+            EM_matrix_band(it)%amat = CMPX_ONE
+            EM_matrix_band(it)%jca = it
+         ELSE
+
+            nnz = SIZE( MatBandOne(it)%jca )
+            ! for Hy in the eq (only one unknown quantity)
+            ALLOCATE( EM_matrix_band(it)%amat( nnz ) )
+            ALLOCATE( EM_matrix_band(it)%jca( nnz ) )
+
+            EM_matrix_band(it)%amat = cmpx_zero
+            EM_matrix_band(it)%jca = 0
+
+            EM_matrix_band(it)%amat = MatBand_div_resis_grad(it)%amat * CMPX_ONE - omega * MatBand_mu(it)%amat * CMPX_I
+            EM_matrix_band(it)%jca = MatBandOne(it)%jca
+         ENDIF
+
+      end DO
+
+      CALL convert_bandMatrix_to_COO_matrix('UNSYM')
+      CALL freeMemory_bandMatrix_EM()
+      !CALL release_matrices_operator()
+    end ASSOCIATE
+
+    RETURN
+  end SUBROUTINE assemble_LinearSystem_2DMT_TM
+
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE initialize_matrices_EM_RHS()
+    IMPLICIT NONE
+    IF(ALLOCATED(EM_RHS) )  DEALLOCATE( EM_RHS )
+    IF(ALLOCATED(EM_solution) )  DEALLOCATE( EM_solution )
+    RETURN
+  end SUBROUTINE initialize_matrices_EM_RHS
+
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE freeMemory_bandMatrix_EM()
+    IMPLICIT NONE
+    IF(ALLOCATED(EM_matrix_band) )  DEALLOCATE(EM_matrix_band)
+    RETURN
+  end SUBROUTINE FreeMemory_BandMatrix_EM
+
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE freeMemory_cooMatrix_EM()
+    IMPLICIT NONE
+    IF(ALLOCATED(coef_coo_mat) )  DEALLOCATE(coef_coo_mat)
+    IF(ALLOCATED(coef_coo_ia) )  DEALLOCATE(coef_coo_ia)
+    IF(ALLOCATED(coef_coo_jca) )  DEALLOCATE(coef_coo_jca)
+    RETURN
+  end SUBROUTINE FreeMemory_cooMatrix_EM
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE initialize_matrices_gt_RHS()
+    IMPLICIT NONE
+    IF(ALLOCATED(gt_RHS) )  DEALLOCATE( gt_RHS )
+    IF(ALLOCATED(gt_solution) )  DEALLOCATE( gt_solution )
+    RETURN
+  end SUBROUTINE initialize_matrices_gt_RHS
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+  SUBROUTINE freeMemory_bandMatrix_gt()
+    IMPLICIT NONE
+    IF(ALLOCATED(gt_matrix_band) )  DEALLOCATE(gt_matrix_band)
+    RETURN
+  end SUBROUTINE FreeMemory_BandMatrix_Gt
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+  SUBROUTINE freeMemory_cooMatrix_Gt()
+    IMPLICIT NONE
+    IF(ALLOCATED(rcoef_coo_mat) )  DEALLOCATE(rcoef_coo_mat)
+    IF(ALLOCATED(rcoef_coo_ia) )  DEALLOCATE(rcoef_coo_ia)
+    IF(ALLOCATED(rcoef_coo_jca) )  DEALLOCATE(rcoef_coo_jca)
+    RETURN
+  end SUBROUTINE freeMemory_cooMatrix_Gt
+  !---------------------------------------------------------------
+  !---------------------------------------------------------------
+
+  SUBROUTINE convert_bandMatrix_to_COO_matrix( symm )
+    ! This is an internal subroutine in this module
+    !
+    ! After assembling matrix into band format (still only non-zeros), convert it to
+    ! COO format arrays
+    ! For symmetric matrices: ONLY stores diagonal plus upper OR lower part of the nonzeros.
+
+    USE modelling_parameter, ONLY: modelling
+    IMPLICIT NONE
+
+    CHARACTER(LEN=*),INTENT(IN) :: symm   ! indication of symmetry of the final matrix
+
+    INTEGER :: k, ndim, nnz, j, nnz_per_row
+
+    CHARACTER(LEN=300) :: subroutineTitle = "convert_bandMatrix_to_COO_matrix"
+
+    ASSOCIATE( DataType => modelling%DataType )
+
+      SELECT CASE ( TRIM(ADJUSTL(DataType)) )
+
+      CASE( 'CM' )
+         !CALL print_general_msg('Convert banded EM equation system into COO system')
+
+         IF( ALLOCATED(coef_coo_mat) )  DEALLOCATE( coef_coo_mat )
+         IF( ALLOCATED(coef_coo_ia) )  DEALLOCATE( coef_coo_ia )
+         IF( ALLOCATED(coef_coo_jca) )  DEALLOCATE( coef_coo_jca )
+         ndim = SIZE( EM_matrix_band )
+
+      CASE('RE')
+         !CALL print_general_msg('Convert banded gt equation system into COO system')
+
+         IF( ALLOCATED(rcoef_coo_mat) )  DEALLOCATE( rcoef_coo_mat )
+         IF( ALLOCATED(rcoef_coo_ia) )  DEALLOCATE( rcoef_coo_ia )
+         IF( ALLOCATED(rcoef_coo_jca) )  DEALLOCATE( rcoef_coo_jca )
+         ndim = SIZE( gt_matrix_band )
+      CASE DEFAULT
+         PRINT*,''; PRINT*, 'In subroutine <'//TRIM(ADJUSTL(subroutineTitle))//'>'
+         PRINT*, 'Datatype ', TRIM(ADJUSTL(DataType)), ' is not supported !'
+         PRINT*, 'Program running terminated by <STOP>'
+         STOP
+      END SELECT
+
+      IF( ndim < 1 ) THEN
+         PRINT*,''; PRINT*, 'In subroutine <'//TRIM(ADJUSTL(subroutineTitle))//'>'
+         PRINT*, 'The banded FE matrix has its dimension less than 0, likely it has not been assembled ...STOPPED'
+         STOP
+      END IF
+
+      nnz = 0
+
+      DO k = 1, ndim
+         SELECT CASE ( TRIM(ADJUSTL(DataType)) )
+         CASE( 'CM' )
+            IF( TRIM(ADJUSTL(symm)) == 'SYM' ) THEN   ! (numerically) symmetric matrix
+               nnz = nnz + SIZE( PACK(EM_matrix_band(k)%JCA, EM_matrix_band(k)%JCA >= k ) )
+            ELSE
+               nnz = nnz + SIZE( EM_matrix_band(k)%JCA )  ! asymmetric case
+            END IF
+         CASE('RE')
+            IF( TRIM(ADJUSTL(symm)) == 'SYM' ) THEN   ! symmetric matrix
+               nnz = nnz + SIZE( PACK(gt_matrix_band(k)%JCA, gt_matrix_band(k)%JCA >= k ) )
+            ELSE
+               nnz = nnz + SIZE( gt_matrix_band(k)%JCA )
+            END IF
+         END SELECT
+      ENDDO
+
+      IF( TRIM(ADJUSTL(DataType)) == 'CM' )  THEN
+         ALLOCATE( coef_coo_mat(nnz), coef_coo_ia(nnz), coef_coo_jca(nnz)  )
+      ELSE
+         ALLOCATE( rcoef_coo_mat(nnz), rcoef_coo_ia(nnz), rcoef_coo_jca(nnz)  )
+      END IF
+
+
+      j = 0
+
+
+      IF( TRIM(ADJUSTL(DataType)) == 'CM' )  THEN
+         DO k = 1, ndim
+            IF( TRIM(ADJUSTL(symm)) == 'SYM' ) THEN
+            ELSE
+               nnz_per_row = SIZE( EM_matrix_band(k)%JCA )
+               j = j + nnz_per_row
+               coef_coo_mat( j - nnz_per_row + 1  :  j ) = EM_matrix_band(k)%amat
+               coef_coo_ia( j - nnz_per_row + 1  :  j ) = k
+               coef_coo_jca( j - nnz_per_row + 1  :  j ) = EM_matrix_band(k)%JCA
+            END IF
+         END DO
+      ELSE
+         DO k = 1, ndim
+            IF( TRIM(ADJUSTL(symm)) == 'SYM' ) THEN
+            ELSE
+               nnz_per_row = SIZE( gt_matrix_band(k)%JCA )
+               j = j + nnz_per_row
+               rcoef_coo_mat( j - nnz_per_row + 1  :  j ) = gt_matrix_band(k)%amat
+               rcoef_coo_ia( j - nnz_per_row + 1  :  j ) = k
+               rcoef_coo_jca( j - nnz_per_row + 1  :  j ) = gt_matrix_band(k)%JCA
+            END IF
+         END DO
+      END IF
+    end ASSOCIATE
+    RETURN
+  end SUBROUTINE convert_bandMatrix_to_COO_matrix
+
+  !---------------------------------------------------------------
+  SUBROUTINE solve_the_linear_system()
+    ! Solve the linear system of equations after assembling
+    !--RHS is NOT modified. Only SOLUTION is modified upon return.
+    USE modelling_parameter, ONLY: modelling
+    USE Iterative_solvers, ONLY: iter_solver_real, iter_solver_complex
+    USE constants_module, ONLY: cmpx_zero
+    IMPLICIT NONE
+    CHARACTER(LEN=6) :: symm
+    INTEGER :: k
+
+    ASSOCIATE( DataType => modelling%DataType, iter_solver => modelling%iter_solver, &
+         iter_solver_name => modelling%iter_solver_name)
+
+      IF( TRIM(ADJUSTL(DataType)) == 'CM' )  THEN
+         EM_solution = cmpx_zero
+         print*, 'nrow = ', MAXVAL( coef_coo_ia )
+         print*, 'ncol = ', MAXVAL( coef_coo_jca )
+
+         IF( iter_solver )  THEN
+            DO k = 1, SIZE( EM_RHS, 2)
+               CALL iter_solver_complex( SIZE(EM_RHS, 1), SIZE(coef_coo_ia), coef_coo_ia, coef_coo_jca, &
+                    coef_coo_mat, EM_RHS(:, k), TRIM(ADJUSTL(iter_solver_name)), EM_solution(:, k))
+            END DO
+         ELSE
+            ! use direct solvers
+            ! 2D MT, two assemblings of system
+            symm = 'UNSYM'
+            CALL zmumps_solver(SIZE(EM_RHS, 1), SIZE(coef_coo_ia),  &
+                 coef_coo_ia, coef_coo_jca, coef_coo_mat, 1, EM_RHS(:,1), symm, EM_solution(:,1))
+            CALL assemble_LinearSystem_2DMT_TM()    ! now TM mode solution (Hy)
+            CALL zmumps_solver(SIZE(EM_RHS, 1), SIZE(coef_coo_ia),  &
+                 coef_coo_ia, coef_coo_jca, coef_coo_mat, 1, EM_RHS(:,2), symm, EM_solution(:,2))
+         END IF
+
+      ELSE IF( TRIM(ADJUSTL(DataType)) == 'RE' ) THEN
+         gt_solution = 0.0
+         print*, 'nrow = ', MAXVAL( rcoef_coo_ia )
+         print*, 'ncol = ', MAXVAL( rcoef_coo_jca )
+         IF( iter_solver )  THEN
+            DO k = 1, SIZE( gt_RHS, 2)
+               CALL iter_solver_real( SIZE(gt_RHS, 1), SIZE(rcoef_coo_ia), rcoef_coo_ia, rcoef_coo_jca, &
+                    rcoef_coo_mat, gt_RHS(:, k), TRIM(ADJUSTL(iter_solver_name)), gt_solution(:, k))
+            END DO
+         ELSE
+            ! direct solver, real version
+            symm = 'UNSYM'
+            CALL dmumps_solver(SIZE(gt_RHS, 1), SIZE(rcoef_coo_ia),  &
+                 rcoef_coo_ia, rcoef_coo_jca, rcoef_coo_mat, SIZE(gt_RHS, 2), gt_RHS, symm, gt_solution)
+         END IF
+      END IF
+    end ASSOCIATE
+
+    RETURN
+  end SUBROUTINE solve_the_linear_system
+
+end MODULE linear_system_equation_data

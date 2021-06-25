@@ -1,0 +1,112 @@
+MODULE EM_data_postprocess
+  ! Author: Jianbo Long, Jan, 2017
+  USE float_precision, ONLY: DPR, CDPR
+  USE error_cls
+  USE FORTRAN_generic, ONLY: print_general_msg, print_debug_msg
+  USE modelling_parameter, ONLY: modelling
+  IMPLICIT NONE
+  PRIVATE
+  INTEGER,PARAMETER :: sub_len = 300
+  INTEGER,PARAMETER :: wordlen = 256
+  CHARACTER(LEN=sub_len),PROTECTED :: thisModule = "EM_data_postprocess"
+  ! Public subroutines/functions
+  PUBLIC :: data_processing_EM
+CONTAINS
+  SUBROUTINE data_processing_EM ()
+    USE model_setup_EM, ONLY: write_numerical_result_to_files, write_to_files_Ron_MT2D
+    USE EM_data_measurements, ONLY: nobs, xobs, yobs, zobs, get_synthetic_measurement_positions
+    USE linear_system_equation_data, ONLY: sys_solution => EM_solution
+    IMPLICIT NONE
+    INTEGER :: num_rhs
+    COMPLEX(CDPR),ALLOCATABLE :: fun_loc(:)
+    ! double check the measurement locations ----
+    IF( .NOT. ALLOCATED(xobs)) CALL get_synthetic_measurement_positions()
+
+    IF( TRIM( ADJUSTL(modelling%DataType) ) == 'CM' ) THEN
+       CALL print_general_msg("Writing MT2D sol for Ron's DD")
+       CALL write_to_files_Ron_MT2D(sys_solution(:,1), sys_solution(:,2))
+    end IF
+    
+    IF( nobs > 0 ) THEN
+       ALLOCATE(fun_loc(nobs) )
+       ! number of the columns of RHS
+       NUM_RHS = SIZE(sys_solution, 2)
+       CALL post_interpolation( nobs,xobs, zobs, fun_loc, sys_solution(:,1) )
+       CALL write_numerical_result_to_files(nobs, xobs, yobs, zobs, fun_loc)
+    end IF
+    ! --  leaving measurement calculation ---
+    RETURN
+  end SUBROUTINE data_processing_EM
+
+  SUBROUTINE post_interpolation(nobs, xobs, zobs, func, solution)
+    ! FE method over triangular meshes
+    ! Inputs: # of data, 2D locations (x,z), and func component values at the dofs.
+    ! Outputs: func at the measurements.
+    USE FORTRAN_generic, ONLY: complex_dot_product
+    USE mesh2d_discretization, ONLY: ele2node
+    USE scalar_FE_kernels_2d, ONLY: which_triag_for_point,&
+         get_basisWeights_linear_triag
+    IMPLICIT NONE
+    INTEGER,INTENT(IN) :: nobs
+    REAL(DPR),INTENT(IN) :: xobs(nobs), zobs(nobs)
+    COMPLEX(CDPR) :: solution(:)
+    COMPLEX(CDPR),INTENT(INOUT):: func(nobs)
+    REAL(DPR),ALLOCATABLE :: BasisWeights(:,:)
+    INTEGER :: i, k, nshape, whichele, ierr, k2global
+    INTEGER,ALLOCATABLE :: LocalNodes(:)
+    REAL(DPR) :: TempPoint(2), ele_area
+
+    ! derivatives
+    COMPLEX(CDPR),ALLOCATABLE :: localCoe(:), localCoeDx(:), localCoeDz(:),&
+         localEys(:)
+    TYPE(error_type) :: error
+    CHARACTER(LEN=wordlen) :: msg
+    CHARACTER(LEN=sub_len) :: thisSubroutine = "post_interpolation"
+
+    CALL print_general_msg(TRIM(ADJUSTL(thisSubroutine)))
+    !nfe = 1      ! order of FE
+    nshape = 3   ! local # of dofs
+    ALLOCATE( LocalNodes(nshape), BasisWeights(nshape,nshape), LocalEys(nshape) )
+    ALLOCATE( localCoe(nshape), localCoeDx(nshape), localCoeDz(nshape) )
+
+    OBB: DO i = 1, nobs
+       TempPoint(1) = xobs(i)
+       TempPoint(2) = zobs(i)
+
+       CALL which_triag_for_point( TempPoint, whichele, ierr )
+       ! possibly degenerated element for this point. Degeneration may happen for a number of
+       !  reasons, e.g., limited numerical precision in geometry searching, meshing issues, etc
+       IF( ierr > 0 ) THEN  
+          WRITE(msg,FMT='(A)') 'Possibly degenerated element'
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),TRIM(ADJUSTL(thisSubroutine)),msg)
+          IF(error_check(error)) CALL error_report(error)
+       END IF
+
+       LocalNodes = ele2node( whichele, 1 : 3)
+       CALL get_basisWeights_linear_triag( LocalNodes, BasisWeights, ele_area)
+
+       ! loop over the DOFs (or the basis functions)
+       DO k = 1, nshape
+          k2global = ele2node( whichele, k )
+          ! assemble local field values in vector form.
+          localEys(k) = solution(k2global)  ! solution
+
+          ! a + b*x0 + c*z0 = N(x0,z0)
+          localCoe(k) = CMPLX(BasisWeights(k, 1) + BasisWeights(k, 2) * TempPoint(1) + &
+               BasisWeights(k, 3) * TempPoint(2), 0.d0, KIND=8 )
+          localCoeDx(k) = CMPLX(BasisWeights(k, 2), 0.d0, KIND=8 )
+          localCoeDz(k) = CMPLX(BasisWeights(k, 3), 0.d0, KIND=8 )
+       ENDDO
+
+       ! For Ey, TE
+       CALL complex_dot_product( SIZE(localEys), localCoe, localEys, func(i) )
+
+    end DO OBB
+    RETURN
+  end SUBROUTINE post_interpolation
+
+  ! -------------------------------------------------------
+  ! -------------------------------------------------------
+
+
+end MODULE EM_data_postprocess

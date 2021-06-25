@@ -1,0 +1,546 @@
+! file I/O
+MODULE fileio_mod_peter
+! Contains various file input and output subroutines for general use.
+   
+   USE error_cls
+   
+   IMPLICIT NONE
+   
+   PRIVATE
+   PUBLIC :: LINELEN
+   PUBLIC :: fileio_exists, fileio_open_read, fileio_open_write, next_line, skip_line, read_line, write_line, &
+             find_line, get_parameter, count_lines, read_input_line, fileio_get_fid, fileio_get_fids
+
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+! STATIC PARAMETERS
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+   
+   INTEGER, PARAMETER :: LINELEN=4096 ! length of character strings that hold a single line from a file
+   INTEGER, PARAMETER :: IDMIN=10 ! minimum allowed fid value in list
+   INTEGER, PARAMETER :: IDMAX=110 ! maximum allowed fid value in list
+
+CONTAINS
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   LOGICAL FUNCTION fileio_exists(filename) RESULT(ok)
+   ! Checks if a file exists.
+      IMPLICIT NONE
+      CHARACTER(LEN=*), INTENT(IN) :: filename ! name of file to check
+      INQUIRE(FILE=TRIM(ADJUSTL(filename)),EXIST=ok) ! PURE functions can't do any I/O
+   END FUNCTION fileio_exists
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE fileio_open_read(filename,fid,error)
+   ! Opens a file for reading. Throws an error if can't open the file.
+   ! Uses the following parameters to open the file: STATUS='OLD',ACTION='READ',POSITION='REWIND'
+      IMPLICIT NONE
+      CHARACTER(LEN=*), INTENT(IN) :: filename ! name of file to open
+      INTEGER, INTENT(IN) :: fid ! the fid value to use
+      TYPE(error_type), INTENT(INOUT) :: error
+      LOGICAL :: ok
+      INTEGER :: ierr
+      ! Check file exists:
+      IF (.NOT.fileio_exists(filename)) THEN
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_open_read', &
+                              'specified file does not exist: ' // TRIM(filename))
+         RETURN
+      END IF
+      ! Check if the file is already opened:
+      INQUIRE(FILE=TRIM(filename),OPENED=ok)
+      IF (ok) THEN
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_open_read', &
+                              'specified file is already open: ' // TRIM(filename))
+         RETURN
+      END IF
+      ! Check if the fid is already opened:
+      INQUIRE(UNIT=fid,OPENED=ok)
+      IF (ok) THEN
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_open_read','specified fid is already open')
+         RETURN
+      END IF
+      ! Open the file for reading:
+      OPEN(UNIT=fid,FILE=TRIM(filename),STATUS='OLD',ACTION='READ',POSITION='REWIND',IOSTAT=ierr)
+      IF (ierr/=0) CALL error_construct(error,ERROR_OPENR,'fileio_mod','fileio_open_read',TRIM(filename),ierr)
+   END SUBROUTINE fileio_open_read
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE fileio_open_write(filename,fid,error,append_op)
+   ! Opens a file for writing. Throws an error if can't open the file.
+   ! Uses the following parameters to open the file: STATUS='REPLACE',ACTION='WRITE'
+      IMPLICIT NONE
+      CHARACTER(LEN=*), INTENT(IN) :: filename ! name of file to open
+      INTEGER, INTENT(IN) :: fid ! the fid value to use
+      TYPE(error_type), INTENT(INOUT) :: error
+      LOGICAL, INTENT(IN), OPTIONAL :: append_op
+      LOGICAL :: append, ok
+      INTEGER :: ierr
+      ! Check optional input:
+      IF (PRESENT(append_op)) THEN
+         append = append_op
+      ELSE
+         append = .FALSE.
+      END IF
+      ! Check if the file is already opened:
+      INQUIRE(FILE=TRIM(filename),OPENED=ok)
+      IF (ok) THEN
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_open_write', &
+                              'specified file is already open: ' // TRIM(filename))
+         RETURN
+      END IF
+      ! Check if the fid is already opened:
+      INQUIRE(UNIT=fid,OPENED=ok)
+      IF (ok) THEN
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_open_write','specified fid is already open')
+         RETURN
+      END IF
+      ! Open the file for writing:
+      IF (fileio_exists(filename)) THEN
+         IF (append) THEN
+            OPEN(UNIT=fid,FILE=TRIM(filename),STATUS='OLD',POSITION='APPEND',ACTION='WRITE',IOSTAT=ierr)
+         ELSE
+            OPEN(UNIT=fid,FILE=TRIM(filename),STATUS='REPLACE',ACTION='WRITE',IOSTAT=ierr)
+         END IF
+      ELSE
+         OPEN(UNIT=fid,FILE=TRIM(filename),STATUS='NEW',ACTION='WRITE',IOSTAT=ierr)
+      END IF
+      IF (ierr/=0) CALL error_construct(error,ERROR_OPENW,'fileio_mod','fileio_open_write',TRIM(filename),ierr)
+   END SUBROUTINE fileio_open_write
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE fileio_get_fid(fid,error)
+   ! Provides a new (unused) fid value.
+   ! DO NOT RUN IN PARALLEL. DO NOT LOOP. NOT THREAD SAFE. USE fileio_get_fids BEFORE YOUR PARALLEL BLOCK.
+      IMPLICIT NONE
+      INTEGER, INTENT(OUT) :: fid ! the fid value
+      TYPE(error_type), INTENT(INOUT) :: error
+      INTEGER :: i
+      LOGICAL :: op
+      ! Look for an unused fid value:
+      fid = 0 ! avoids gfortran compilation warning
+      DO i=IDMIN,IDMAX
+         INQUIRE(UNIT=i,OPENED=op) ! op=.TRUE. if UNIT=i is connected (opened)
+         IF (.NOT.op) THEN ! found an unused fid value
+           fid = i
+           RETURN
+         END IF
+      END DO
+      CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_get_fid','no appropriate fid value found')
+   END SUBROUTINE fileio_get_fid
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE fileio_get_fids(fids,error)
+   ! Provides several new (unused) fid values.
+      IMPLICIT NONE
+      INTEGER, DIMENSION(:), INTENT(OUT) :: fids ! the fid values
+      TYPE(error_type), INTENT(INOUT) :: error
+      INTEGER :: i,j,n
+      LOGICAL :: op
+      ! Look for unused fid values:
+      fids = 0 ! avoids gfortran compilation warning
+      n = SIZE(fids,1) ! number of fids required
+      j = 1 ! counter for fids
+      DO i=IDMIN,IDMAX
+         INQUIRE(UNIT=i,OPENED=op) ! op=.TRUE. if UNIT=i is connected (opened)
+         IF (.NOT.op) THEN ! found an unused fid value
+           fids(j) = i
+           j = j + 1
+           IF (j>n) RETURN
+         END IF
+      END DO
+      CALL error_construct(error,ERROR_GENERAL,'fileio_mod','fileio_get_fids','not enough appropriate fid values found')
+   END SUBROUTINE fileio_get_fids
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE next_line(fid,cc,ierr,bsp,tline_op,nskip_op)
+   ! Searches for a line that is non-empty and non-commented.
+   ! If bsp=true then repositions to the start of that line, otherwise repositions to line that follows it.
+   ! If an error occurs, control is returned to the calling routine without any error message.
+   ! If the line is not found then an error is indicated in ierr.
+   
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      CHARACTER(LEN=1), INTENT(IN) :: cc ! comment character
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      LOGICAL, INTENT(IN) :: bsp ! if true then backspaces to the start of the found line
+      CHARACTER(LEN=*), INTENT(OUT), OPTIONAL :: tline_op ! the text of the found line
+      INTEGER, INTENT(OUT), OPTIONAL :: nskip_op ! number of lines skipped
+      
+      LOGICAL :: present_tline, present_nskip
+      CHARACTER(LEN=LINELEN) :: t ! temporary character variable for reading file lines
+      
+      ! Check for optional inputs:
+      present_tline = PRESENT(tline_op)
+      present_nskip = PRESENT(nskip_op)
+      
+      ! Read lines until a non-empty ONE is found without initial comment character:
+      IF (present_nskip) nskip_op = 0
+      DO
+         
+         ! Read next line:
+         CALL read_line(fid,t,ierr)
+         IF (present_nskip) nskip_op = nskip_op + 1
+         ! Check for error:
+         IF (ierr/=0) RETURN
+         
+         ! Check for empty line:
+         IF (LEN_TRIM(t)==0) CYCLE ! skip empty lines
+         
+         ! Copy to output string if present:
+         IF (present_tline) tline_op = t
+         
+         ! Remove leading blanks (spaces) from the line:
+         t = ADJUSTL(t)
+         
+         ! Check for comment character:
+         IF (t(1:1)/=cc) THEN ! a non-commented line has been found
+            EXIT ! from DO loop
+         END IF
+         
+      END DO
+      
+      ! Rewind to start of that line if requested and return:
+      IF (bsp) THEN
+         BACKSPACE(UNIT=fid,IOSTAT=ierr)
+         ! The file position is before the current record if a current record exists.
+         ! If there is no current record, the file position is before the preceding record.
+         ! If the file is at its initial point, file position remains unchanged.
+         IF (present_nskip) nskip_op = nskip_op - 1
+      END IF
+      
+   END SUBROUTINE next_line
+
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE find_line(fid,ss,ierr,bgn,bsp,tline_op)
+   ! Searches for a line that begins or contains the indicated text.
+   ! If bgn=true then the line must begin with the indicated text, otherwise contains it.
+   ! If bsp=true then repositions to the start of that line, otherwise repositions to line that follows it.
+   ! If an error occurs, control is returned to the calling routine without any error message.
+   ! If the line is not found then an error is indicated in ierr.
+   
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      CHARACTER(LEN=*), INTENT(IN) :: ss ! text to search for
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      LOGICAL, INTENT(IN) :: bgn ! if true then looks for a line that begins with ss (otherwise, contains ss)
+      LOGICAL, INTENT(IN) :: bsp ! if true then backspaces to the start of the found line
+      CHARACTER(LEN=*), INTENT(OUT), OPTIONAL :: tline_op ! the text of the found line
+      
+      LOGICAL :: present_tline, found
+      INTEGER :: i,n
+      CHARACTER(LEN=LINELEN) :: s,t ! temporary character variables
+      
+      ! Check optional input:
+      present_tline = PRESENT(tline_op)
+      
+      ! Remove leading blanks (spaces) from the search text and store it's length (without trailing blanks):
+      s = ADJUSTL(ss)
+      n = LEN_TRIM(s) ! length of s
+      
+      ! Read lines until ONE is found with initial search text:
+      DO
+      
+         ! Read next line:
+         CALL read_line(fid,t,ierr)
+         ! Check for error:
+         IF (ierr/=0) RETURN
+         
+         ! Copy to output string if present:
+         IF (present_tline) tline_op = t
+         
+         ! Remove leading blanks (spaces) from the line:
+         t = ADJUSTL(t)
+         
+         ! Check for search text:
+         found = .FALSE.
+         IF (bgn) THEN
+            IF (t(1:n)==s(1:n)) found = .TRUE.
+         ELSE
+            i = INDEX(t,s(1:n),.FALSE.)
+            IF ((i>0).AND.(i<=LEN_TRIM(t))) found = .TRUE.
+         END IF
+         IF (found) THEN
+            ! Rewind to start of that line if requested and return:
+            IF (bsp) BACKSPACE(UNIT=fid,IOSTAT=ierr)
+            RETURN
+         END IF
+         
+      END DO
+
+   END SUBROUTINE find_line
+
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE get_parameter(fid,name,x,ierr)
+   ! Searches for a line of the format
+   !    name = value
+   ! where "name" is the name of some real-valued parameter and "value" is the value of that parameter.
+   ! Repositions to the following line.
+   ! If the line is found then the character string containing the value is placed in x.
+   ! Note, x is a character string so if you want an actual numeric value
+   ! you'll have to extract it outside of this subroutine!
+   ! Otherwise and error is indicated in ierr.
+   
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      CHARACTER(LEN=*), INTENT(IN) :: name ! parameter name
+      CHARACTER(LEN=*), INTENT(OUT) :: x ! output value for parameter is contained in this character string
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      
+      CHARACTER(LEN=LINELEN) :: tline ! temporary character variable for reading file lines
+      INTEGER :: i ! output of INDEX
+      
+      ! Find the line:
+      CALL find_line(fid,name,ierr,.TRUE.,.FALSE.,tline)
+      ! Check for error:
+      IF (ierr/=0) RETURN
+      
+      ! Extract the parameter value:
+      i = INDEX(tline,'=',.true.) ! returns the last starting position for a substring within a string
+      x = tline((i+1):256)
+      x = ADJUSTL(x) ! removes leading blanks (spaces)
+      
+   END SUBROUTINE get_parameter
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE read_line(fid,tline,ierr)
+   ! Reads the next line from a file.
+   ! If an error occurs, control is returned to the calling routine without any error thrown.
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      CHARACTER(LEN=*), INTENT(OUT) :: tline ! the line read
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      READ(UNIT=fid,FMT='(A)',IOSTAT=ierr) tline
+   END SUBROUTINE read_line
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+   
+   SUBROUTINE write_line(fid,tline,ierr)
+   ! Writes a line of text to a file.
+   ! If an error occurs, control is returned to the calling routine without any error thrown.
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      CHARACTER(LEN=*), INTENT(IN) :: tline ! the line written
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      WRITE(UNIT=fid,FMT='(A)',IOSTAT=ierr) TRIM(tline)
+   END SUBROUTINE write_line
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+   
+   SUBROUTINE skip_line(fid,ierr)
+   ! Skips the next line in a file.
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid ! file unit number
+      INTEGER, INTENT(OUT) :: ierr ! IOSTAT error catching
+      CHARACTER(LEN=LINELEN) :: tline
+      CALL read_line(fid,tline,ierr)
+   END SUBROUTINE skip_line
+
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE count_lines(filename,n,error)
+   ! Counts the number of lines in the file.
+      IMPLICIT NONE
+      CHARACTER(LEN=*), INTENT(IN) :: filename
+      INTEGER, INTENT(OUT) :: n ! the number of lines
+      TYPE(error_type), INTENT(INOUT) :: error
+      INTEGER :: fid,ierr
+      ! Open file for reading:
+      CALL fileio_get_fid(fid,error)
+      IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','count_lines'); RETURN; END IF
+      CALL fileio_open_read(filename,fid,error)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,'fileio_mod','count_lines')
+         RETURN
+      END IF
+      ! Read each line until an error is encountered, counting the lines:
+      n = 0
+      DO
+         CALL skip_line(fid,ierr)
+         IF (ierr/=0) EXIT
+         n = n + 1
+      END DO
+      ! Close file:
+      CLOSE(UNIT=fid)
+   END SUBROUTINE count_lines
+   
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+   SUBROUTINE read_input_line(fid,t1,t2,ierr,error) !,i_op)
+   ! Reads an input file line of format "name value".
+   ! Throws readerr if read error occurs.
+   ! Returns ierr = -1 if reached end of file,
+   !              = +1 if line was commented or empty,
+   !              = 0 otherwise.
+   
+      USE strings_mod, ONLY: WORDLEN, concatenate, remove_comments, tokenize
+      
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: fid
+      CHARACTER(LEN=*), INTENT(OUT) :: t1,t2 ! strings holding "name" and "value" read from the line
+      INTEGER, INTENT(OUT) :: ierr
+      TYPE(error_type), INTENT(INOUT) :: error
+!      INTEGER, INTENT(OUT), OPTIONAL :: i_op
+      
+!      LOGICAL :: present_i
+      INTEGER, PARAMETER :: NMAX=2
+      INTEGER :: n,j !,nmax
+      CHARACTER(LEN=LINELEN) :: t ! temporary variable for reading lines from file
+      CHARACTER(LEN=WORDLEN), DIMENSION(8) :: words
+      
+      ! Check optional input:
+!      present_i = PRESENT(i_op)
+!      IF (present_i) THEN
+!         nmax = 3
+!      ELSE
+!         nmax = 2
+!      END IF
+      
+      ! Get current line:
+      CALL read_line(fid,t,ierr)
+      IF (ierr>0) THEN
+         CALL error_construct(error,ERROR_READ,'fileio_mod','read_input_line','current line',ierr)
+         RETURN
+      END IF
+      IF (ierr<0) THEN ! reached end of file
+         ierr = -1
+         RETURN
+      END IF
+      
+      ! Any line starting with "#" is a commented line that should be skipped:
+      t = ADJUSTL(t)
+      IF ((t(1:1)=='#').OR.(t(1:1)=='!')) THEN ! commented line
+         ierr = 1
+         RETURN
+      END IF
+      
+      ! Any empty line should be skipped:
+      CALL remove_comments(t,'#')
+      CALL remove_comments(t,'!')
+      IF (LEN_TRIM(t)==0) THEN ! empty line
+         ierr = 1
+         RETURN
+      END IF
+      
+      ! Split the line into space-separated words:
+      CALL tokenize(t,' ',.TRUE.,0,n,words,error)
+      IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+      
+      ! Check for error:
+      IF (n<1) THEN
+         PRINT *, 't="',TRIM(t),'"'
+         PRINT *, n,nmax
+         CALL concatenate(error,t1,'incorrect specification line: ',t,trimflag_op=.FALSE.)
+         IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+         CALL error_construct(error,ERROR_GENERAL,'fileio_mod','read_input_line',t1)
+         PRINT *, '(The inversion input file no longer uses indexed datainp or propinp parameters.)'
+         RETURN
+      END IF
+      
+      ! Check for double quotes (e.g. for clusters):
+      t1 = words(1)
+      !IF ((t1(1:9)=='clusters ').OR.(t1(1:8)=='spreads ').OR.(t1(1:10)=='rotations ')) THEN
+      !IF ((t1(1:8)=='maxobjs ').OR.(t1(1:8)=='centres ').OR.(t1(1:8)=='spreads ').OR.(t1(1:10)=='rotations ')) THEN
+      !IF ((t1(1:8)=='centres ').OR.(t1(1:8)=='spreads ').OR.(t1(1:10)=='rotations ').OR. &
+      IF ((t1(1:8)=='maxobjs ').OR.(t1(1:8)=='centres ').OR.(t1(1:8)=='spreads ').OR.(t1(1:10)=='rotations ').OR. &
+          (t1(1:5)=='var1 ').OR.(t1(1:5)=='var2 ').OR.(t1(1:6)=='covar ')) THEN
+         ! Check for error:
+         !IF (n<=3) THEN
+         IF (n<=2) THEN
+            PRINT *, 't="',TRIM(t),'"'
+            PRINT *, n,nmax
+            CALL concatenate(error,t1,'incorrect specification line: ',t,trimflag_op=.FALSE.)
+            IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+            CALL error_construct(error,ERROR_GENERAL,'fileio_mod','read_input_line',t1)
+            PRINT *, '(The inversion input file no longer uses indexed datainp or propinp parameters.)'
+            RETURN
+         END IF
+         !! Join words(3:n) together
+         !t2 = words(3)
+         !DO j=4,n
+         ! Join words(2:n) together
+         t2 = words(2)
+         DO j=3,n
+            t2 = TRIM(t2) // ' ' // TRIM(words(j))
+         END DO
+         ! Check for double quotes:
+         n = LEN_TRIM(t2)
+         IF ((t2(1:1)=='"').AND.(t2(n:n)=='"')) THEN
+            !! Set n=3 and words(3) as required:
+            !words(3) = TRIM(t2) ! don't want to remove double quotes or else reading t3 from words(3) will fail below
+            !n = 3
+            ! Set n=2 and words(2) as required:
+            words(2) = TRIM(t2) ! don't want to remove double quotes or else reading t2 from words(2) will fail below
+            n = 2
+         END IF
+      ELSE
+         ! Check for error:
+         IF ((n<2).OR.(n>nmax)) THEN
+            PRINT *, 't="',TRIM(t),'"'
+            PRINT *, n,nmax
+            CALL concatenate(error,t1,'incorrect specification line: ',t,trimflag_op=.FALSE.)
+            IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+            CALL error_construct(error,ERROR_GENERAL,'fileio_mod','read_input_line',t1)
+            PRINT *, '(The inversion input file no longer uses indexed datainp or propinp parameters.)'
+            RETURN
+         END IF
+      END IF
+      
+      ! Remove double quotes around file names:
+!      t1 = words(1)
+      READ(UNIT=words(2),FMT=*,IOSTAT=ierr) t2 ! this removes double quotes around file names
+      IF (ierr/=0) THEN
+         CALL concatenate(error,t2,'parameter ',TRIM(t1),trimflag_op=.FALSE.)
+         IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+         CALL error_construct(error,ERROR_READ,'fileio_mod','read_input_line',t2,ierr)
+         RETURN
+      END IF
+      
+      ! Deal with optional third word:
+!      IF (present_i) THEN
+!         i_op = 0
+!         IF (n==3) THEN
+!            READ(UNIT=t2,FMT=*) i_op
+!            READ(UNIT=words(3),FMT=*) t2
+!            IF (i_op<1) THEN
+!               CALL concatenate(error,t,'incorrect specification of parameter ',t1)
+!               IF (error_check(error)) THEN; CALL error_pass(error,'fileio_mod','read_input_line'); RETURN; END IF
+!               CALL error_construct(error,ERROR_GENERAL,'fileio_mod','read_input_line',t)
+!               RETURN
+!            END IF
+!         END IF
+!      END IF
+      
+      ! Return successfully:
+      ierr = 0
+      
+   END SUBROUTINE read_input_line
+
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+END MODULE fileio_mod_peter

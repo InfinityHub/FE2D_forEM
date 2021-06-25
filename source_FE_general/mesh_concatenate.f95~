@@ -1,0 +1,66 @@
+MODULE mesh_concatenate_module
+  ! Module for organizing various meshes used numerical modelling.
+  ! Author: Jianbo Long, Mar, 2020
+
+  IMPLICIT NONE
+
+  PRIVATE
+  ! output
+  INTEGER,PROTECTED :: ndof
+  INTEGER,PROTECTED :: ndof_tm
+  
+  PUBLIC :: mesh_concatenate
+  PUBLIC :: ndof,  ndof_tm
+
+CONTAINS
+  ! -----------------------------------------------------------------------
+
+  SUBROUTINE mesh_concatenate()
+    ! Purposes: Overall interface procedure for meshes/mesh-free discretizations.
+    USE modelling_parameter, ONLY: modelling
+    USE model_setup_EM, ONLY: nodes_tm
+    USE meshfree_discretization, ONLY: use_3D_unstructured_points_from_mesh
+    USE mesh_discretization, ONLY: use_3D_tetrahedral_mesh
+    USE meshfree2d_discretization, ONLY: use_2D_unstructured_points_from_mesh
+    USE mesh2d_discretization, ONLY: use_2D_triangular_mesh
+    USE kdtree_build_EM_Aphi, ONLY: build_3d_trees, build_2d_trees
+
+    IMPLICIT NONE
+    !INTEGER,INTENT(INOUT) :: ndof
+    !CHARACTER(LEN=200) :: subroutineTitle = "use_2D_tetrahedral_mesh"
+
+    SELECT CASE( TRIM(ADJUSTL(modelling%DiscretMode)) )
+    CASE('MESHFREE')
+       IF( modelling%spaceDim == 3 ) THEN
+          ! set up the mesh/meshfree points, determine the ndof (# of degrees of freedom)
+          CALL use_3D_unstructured_points_from_mesh(ndof)
+          ! build required tree structures
+          CALL build_3d_trees()
+       ELSEIF( modelling%spaceDim == 2 ) THEN
+          CALL use_2D_unstructured_points_from_mesh(ndof)
+          CALL build_2d_trees()
+          ! in case of removing interfacial nodes
+          ndof_tm = SIZE(nodes_tm)
+
+       END IF
+    CASE('FE')
+       IF( modelling%spaceDim == 3 ) THEN
+          CALL use_3D_tetrahedral_mesh(ndof)
+       ELSEIF( modelling%spaceDim == 2 ) THEN
+          CALL use_2D_triangular_mesh(ndof)
+       end IF
+    CASE DEFAULT
+       ndof = 0
+    end SELECT
+
+    RETURN
+  END SUBROUTINE Mesh_Concatenate
+  
+
+
+end MODULE Mesh_Concatenate_Module
+
+
+
+
+

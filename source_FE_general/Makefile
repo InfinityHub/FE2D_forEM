@@ -1,0 +1,200 @@
+#
+# Makefile for the general FE solver.
+#
+# Note: gfortran is assummed to be the default FORTRAN compiler. For
+#       other FORTRAN compilers, the varibles for compiler should be 
+#       modified.
+#
+# === How to run this makefile in a terminal ===========
+# ======================================================
+# Type 'make' : make(compile) the default program (see below)
+# Type 'make all' : make the default and all other programs
+
+# Type 'make clean' to delete the main program and all .o files
+# Type 'make cleantest' to delete all test programs and all .o files
+# ======================================================
+
+
+# The work directories may need to be modified accordingly.
+MY_DIR = /home/jack/repos/
+# path for codes
+SRC2 = /home/jack/repos/source_FE_general/
+
+BLD = $(MY_DIR)build_FE_general/
+EXE = $(MY_DIR)exe/
+SRC_Peter = $(SRC2)error_and_string/
+SRC_SP =  $(SRC2)sparsekit/
+
+
+# The following are directories where external libraries can be searched
+#   and linked
+
+# directory of locally installed LAPACK
+DIR_LAPACK = /usr/lib/x86_64-linux-gnu/lapack/
+LIB_LAPACK = -L$(DIR_LAPACK) -llapack -lcblas -lf77blas ## -latlas
+
+# Dependencies and Libraries needed by  MUMPS direct solver.
+# The MUMPS libraries are assumed to be pre-compiled and available.
+# Directories (DIR) are for compiling; Libraries (LIB) are for linking.
+DIR_MUMPS = /home/jack/MUMPS_5_3_3_intalled/
+INC_MUMPS = -I$(DIR_MUMPS)include ##-I$(DIR_MUMPS)libseq
+
+LIB_DMUMPS = -L$(DIR_MUMPS)lib/ -ldmumps -lmumps_common
+LIB_ZMUMPS = -L$(DIR_MUMPS)lib/ -lzmumps -lmumps_common
+## lib directory for scotch, parscotch, metis orderings
+DIR_scotch = /usr/lib/x86_64-linux-gnu/
+# lib directory for parmetis ordering
+DIR_parmetis = /usr/lib/
+
+LIB_scotch = -L$(DIR_scotch) -lptesmumps -lptscotch -lptscotcherr # parallel version
+LIB_parmetis = -L$(DIR_parmetis) -lparmetis -lmetis
+LIB_pord = -L$(DIR_MUMPS)lib/ -lpord
+LIB_ORDERING = $(LIB_scotch) $(LIB_parmetis) $(LIB_pord)
+#LIB_PAR = -L$(DIR_MUMPS)libseq/ -lmpiseq
+#LIB_BLAS = -L$(LIBS) -lptf77blas -latlas      # multi-threaded version of BLAS
+LIB_scalapack = -L$(DIR_scotch) -lscalapack-openmpi
+LIB_OTHERS = -lpthread              # a system library, related to (multi-)thread programming
+LIB_MUMPS = $(LIB_DMUMPS) $(LIB_ZMUMPS) $(LIB_ORDERING) $(LIB_scalapack) $(LIB_OTHERS)
+
+
+# Basic toolkits (NOT modified version) from SPARSEKIT 2.0
+#LIB_SPARSKIT = -L$(LIBS) -lSPARSEkit
+
+
+
+# Define variables for FORTRAN compiler
+# All build files(.o and .mod) would go to $(BLD)
+FLAGM = -Wall -Wextra -Wunused-parameter -fcheck=all -fno-range-check -ffree-line-length-none -pedantic -J$(BLD)
+FLAGless = -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fcheck=all -ffree-line-length-none -pedantic -J$(BLD)
+FLAG_LAPACK =  -J$(BLD)
+FLAGOPT = -O3		# for optimization
+FLAGD = -g  -J$(BLD)		# for debugging
+F95 = mpifort	 -fopenmp	# compiler, assumed as pre-installed
+##F95 = gfortran-9
+
+# List all .o files
+OBJS_DataTypes_and_Constants = $(BLD)general_derived_types_mod.o
+OBJS_tools_FORTRAN_general = $(BLD)FORTRAN_generic_mod.o $(BLD)FORTRAN_string_manipulation_mod.o $(BLD)FORTRAN_fileio_mod.o
+
+OBJS_Geophys_EM_Models_and_Paras = $(BLD)error_cls.o $(BLD)strings_mod.o $(BLD)fileio_mod_Peter.o $(BLD)model_read.o
+
+OBJS_Geophys_EM_measurements = $(BLD)EM_data_measurements_mod.o
+
+OBJS_mesh_unstructured = $(BLD)mesh2d_discretization.o $(BLD)mesh_concatenate.o
+
+OBJS_tools_solvers = $(BLD)dmumps_solver.o \
+		$(BLD)zmumps_solver.o \
+		$(BLD)spa_blassm.o \
+		$(BLD)spa_formats.o \
+		$(BLD)spa_matvec.o \
+		$(BLD)spa_unary.o \
+		$(BLD)spa_ilut.o \
+		$(BLD)spa_iters.o \
+		$(BLD)spa_interface.o \
+		$(BLD)iterative_solver.o \
+		$(BLD)linear_system_equation_data_module.o
+
+OBJS_algorithms_FE = $(BLD)scalar_FE_2d_module.o
+
+OBJS_algorithms_concatenate = $(BLD)Num_algorithm_concatenate_differ_operator.o
+
+OBJS_Basic_EM =  $(BLD)file_read_write.o $(BLD)EM_RHS_concatenate.o $(BLD)EM_data_postprocess_mod.o
+
+# -- ending individual modules of objectives -----
+
+
+
+OBJS_FE2D_general = $(OBJS_DataTypes_and_Constants) $(OBJS_tools_FORTRAN_general) $(OBJS_Geophys_EM_Models_and_Paras) $(OBJS_Geophys_EM_measurements) $(OBJS_mesh_unstructured) $(OBJS_tools_solvers) $(OBJS_algorithms_FE) $(OBJS_algorithms_concatenate) $(OBJS_Basic_EM) $(BLD)FE_program.o
+
+
+# define the targets
+
+.PHONY: default all clean deprecated
+
+default: FE2D
+
+deprecated: 
+
+all:    FE2D
+
+#-------------- Programs -------------------------------------------
+FE2D: $(OBJS_FE2D_general)
+	$(F95) $(FLAGM) $(FLAGOPT) $(OBJS_FE2D_general) -o  $(EXE)FE2D  $(LIB_MUMPS) $(LIB_LAPACK)
+
+#-------------- ending definition of programs -------------------
+
+# To remove all build files and executable files
+
+clean:
+	rm -rf $(BLD)*.o $(BLD)*.mod $(EXE)FE2D default
+
+cleanAll:
+	rm -rf $(BLD)*.o $(BLD)*.mod all
+
+# Dependencies ($@ stands for the target name,and $< for the first prerequisite name)
+# --------- Peter's basic utilities subroutines   ---------------
+$(BLD)error_cls.o:$(SRC_Peter)error_cls.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)strings_mod.o:$(SRC_Peter)strings_mod.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)fileio_mod_Peter.o:$(SRC_Peter)fileio_mod.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+
+#---------------------------------------------------------
+# --------Source2 directory--
+$(BLD)general_derived_types_mod.o:$(SRC2)general_derived_types.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)model_read.o : $(SRC2)model_read.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)mesh2d_discretization.o : $(SRC2)mesh2d_discretization.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)mesh_concatenate.o : $(SRC2)mesh_concatenate.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)zmumps_solver.o : $(SRC2)ZMUMPS_solver.f95
+	$(F95) $(FLAGless) $(INC_MUMPS) -c $< -o $@
+$(BLD)iterative_solver.o : $(SRC2)iterative_solver.f95
+	$(F95) $(FLAGM) $(FLAGOPT)  -c $< -o $@
+$(BLD)dmumps_solver.o : $(SRC2)DMUMPS_solver.f95 
+	$(F95) $(FLAGless) $(FLAGOPT) $(INC_MUMPS) -c $< -o $@
+
+$(BLD)EM_data_measurements_mod.o : $(SRC2)EM_data_measurements.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)EM_data_postprocess_mod.o : $(SRC2)EM_data_postprocess.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)EM_RHS_concatenate.o : $(SRC2)EM_RHS_concatenate.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)scalar_FE_2d_module.o : $(SRC2)scalar_FE_kernel_2d.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)Num_algorithm_concatenate_differ_operator.o : $(SRC2)Num_algorithm_concatenate_differ_operator.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+$(BLD)linear_system_equation_data_module.o : $(SRC2)linear_system_equation_data_mod.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+#----------------------------------
+#--FORTRAN general utilities related
+$(BLD)FORTRAN_generic_mod.o : $(SRC2)FORTRAN_generic_mod.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)FORTRAN_string_manipulation_mod.o : $(SRC2)FORTRAN_string_manipulation_mod.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)FORTRAN_fileio_mod.o : $(SRC2)FORTRAN_fileio_mod.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+$(BLD)file_read_write.o : $(SRC2)file_read_write.f95
+	$(F95) $(FLAGM) $(FLAGOPT) -c $< -o $@
+#--FORTRAN general programs
+$(BLD)FE_program.o : $(SRC2)FE_program.f95
+	$(F95) $(FLAGM)  -c $< -o $@
+
+# ----------------- Sparse kit --------------
+$(BLD)spa_blassm.o : $(SRC_SP)blassm.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_formats.o : $(SRC_SP)formats.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_ilut.o : $(SRC_SP)ilut.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_iters.o : $(SRC_SP)iters.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_matvec.o : $(SRC_SP)matvec.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_unary.o : $(SRC_SP)unary.f 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@
+$(BLD)spa_interface.o : $(SRC_SP)sparse_interface_mod.f90 
+	$(F95) $(FLAG_LAPACK) -c $< -o $@

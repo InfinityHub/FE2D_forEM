@@ -1,0 +1,17 @@
+MODULE num_algorithm_concatenate_differ_operator
+  ! Jianbo Long, Mar, 2020
+  IMPLICIT NONE
+  PRIVATE
+  ! public procedures
+  PUBLIC :: differ_operator_algorithm_concatenate
+CONTAINS
+  SUBROUTINE differ_operator_algorithm_concatenate()
+    ! to modify the data in the linear system module accessed by 'USE-CALL-procedure'
+    USE linear_system_equation_data, ONLY: initialize_matrices_operator
+    USE scalar_FE_kernels_2d, ONLY: get_submatrix_operator_linearFE_triag
+    IMPLICIT NONE
+    CALL initialize_matrices_operator()
+    CALL get_submatrix_operator_linearFE_triag()
+    RETURN
+  end SUBROUTINE differ_operator_algorithm_concatenate
+end MODULE num_algorithm_concatenate_differ_operator

@@ -1,0 +1,685 @@
+MODULE mesh2d_discretization
+  ! Module for processing meshes used by 2-D mesh-based numerical modelling (e.g., FE).
+  ! Author: Jianbo Long, Mar, 2020
+  USE float_precision, ONLY: DPR
+  USE FORTRAN_generic, ONLY: percentage_display
+  USE model_setup_EM, ONLY: nodes
+  USE modelling_parameter, ONLY: modelling, mesh_par, EM_generic
+  USE FORTRAN_generic, ONLY: add_to_list_integer, find_intersect_integer, print_general_msg,&
+       print_debug_msg
+
+  IMPLICIT NONE
+  PRIVATE
+  PUBLIC :: use_2D_triangular_mesh, read_2D_mesh_from_files, connected_cells_for_node_search_slow, &
+       connected_nodes_for_node_search, set_cell_physical_property_2d
+
+  PUBLIC :: p2node, p2ele, ele2node, eg2eg, eg2ele, cellsigma
+
+  ! basic info for unstructured meshes
+  INTEGER,ALLOCATABLE :: ele2node(:,:), neighele(:,:)  
+  INTEGER,ALLOCATABLE :: edge2node(:,:), ele2edge(:,:)
+
+  REAL(DPR),ALLOCATABLE :: cellsigma(:)
+
+  ! quantity (e.g., a node, an edge, or element) to all share-the-quantity tetrahedra indexes
+  TYPE pt2ele_type
+     INTEGER,ALLOCATABLE :: ele(:)
+  END TYPE pt2ele_type
+
+  ! quantity (e.g., a node, an edge, or element) to all share-the-quantity edge indexes
+  TYPE pt2edge_type
+     INTEGER,ALLOCATABLE :: edge(:)
+  END TYPE pt2edge_type
+
+  ! quantity to all other directly connecting nodes indexes (e.g., all connecting nodes for a node)
+  ! Note that currently it also contains the main node itself
+  TYPE pt2pt_type
+     INTEGER,ALLOCATABLE :: nodes(:)
+  END TYPE pt2pt_type
+
+  TYPE(pt2ele_type),ALLOCATABLE :: p2ele(:), eg2ele(:)
+  TYPE(pt2edge_type),ALLOCATABLE :: eg2eg(:)
+  TYPE(pt2pt_type),ALLOCATABLE :: p2node(:)
+  REAL(DPR),PARAMETER :: tinyValue = 1.d-20
+CONTAINS
+  ! -----------------------------------------------------------------------
+
+  SUBROUTINE use_2D_triangular_mesh(ndof)
+    ! Purposes: 
+    ! 1. Prepare a 2D mesh (e.g., from Triangle).
+    ! Implicit Inputs: mesh files on disk
+    !
+    IMPLICIT NONE
+    INTEGER,INTENT(INOUT) :: ndof
+    !CHARACTER(LEN=200) :: subroutineTitle = "use_2D_triangular_mesh"
+
+    ! read 2D unstructured tetrahedral meshes
+    CALL read_2D_mesh_from_files()
+
+    ! determine the degrees of freedom (dofs)
+    ndof = 0
+    ! (1) mesh-based physical properties in each cell;
+    ! (2) mesh-related point-, edge- and element-connectivity calculation
+    IF(TRIM(ADJUSTL(modelling%DataType)) == 'CM' ) CALL set_cell_physical_property_2d('EM')
+
+    IF (modelling%FEdegree == 1) ndof = SIZE(nodes)
+    IF( modelling%FEdegree >= 2 ) THEN
+       CALL calculate_local_edge_connectivity(edge2node, ele2edge, p2ele, eg2ele, eg2eg)
+       IF(modelling%FEdegree == 2) ndof = SIZE(nodes) + SIZE(edge2node, 1) 
+    END IF
+    RETURN
+  END SUBROUTINE use_2D_triangular_mesh
+
+  !! ------------------------------------------------------------------------------------------
+  SUBROUTINE read_2D_mesh_from_files()
+    USE FORTRAN_fileio_mod, ONLY : fileio_exists
+    IMPLICIT NONE
+    INTEGER :: nregion
+    ! INput files
+    CHARACTER(LEN=200)  :: nodefile  
+    CHARACTER(LEN=200)  :: elefile  
+    CHARACTER(LEN=200)  :: edgefile 
+    CHARACTER(LEN=200)  :: neighfile 
+
+    ASSOCIATE( mesh_path => mesh_par%meshfilepath, basename => mesh_par%basefilename)
+      nregion = SIZE( mesh_par%regionMark )
+
+      nodefile = TRIM(ADJUSTL(basename))//".node"
+      elefile = TRIM(ADJUSTL(basename))//".ele"
+      edgefile = TRIM(ADJUSTL(basename))//".edge"
+      neighfile = TRIM(ADJUSTL(basename))//".neigh"
+
+      PRINT*,'--------------------------------------------------------------------------------'
+      PRINT*,'-----------        mesh files found       --------------------------------------'
+      PRINT*,'--------------------------------------------------------------------------------'
+      PRINT*,TRIM(ADJUSTL(mesh_path))
+      IF(fileio_exists( TRIM(ADJUSTL(mesh_path))//TRIM(ADJUSTL(nodefile)) )) PRINT*,TRIM(ADJUSTL(nodefile))
+      IF(fileio_exists( TRIM(ADJUSTL(mesh_path))//TRIM(ADJUSTL(elefile)) )) PRINT*,TRIM(ADJUSTL(elefile))
+      IF(fileio_exists( TRIM(ADJUSTL(mesh_path))//TRIM(ADJUSTL(neighfile)) )) PRINT*,TRIM(ADJUSTL(neighfile))
+
+      IF( modelling%FEdegree >= 2 ) THEN
+         IF(fileio_exists( TRIM(ADJUSTL(mesh_path))//TRIM(ADJUSTL(edgefile)) )) PRINT*, TRIM(ADJUSTL(edgefile))
+      END IF
+
+      CALL read_node_file(mesh_path, nodefile, nodes)
+      CALL check_node_boundary(nodes)
+      CALL read_element_file(mesh_path, elefile, mesh_par%regionMark, ele2node)
+      CALL update_node_regional_marker()
+      
+      IF( modelling%FEdegree >= 2 ) THEN
+         CALL read_edge_file(mesh_path, edgefile, edge2node)
+         CALL check_edge_boundary(nodes, edge2node)
+         CALL calculate_element_2_edge_information(ele2node, edge2node, ele2edge)
+      END IF
+      CALL read_neigh_element_file(mesh_path, neighfile, neighele)    
+      CALL calculate_pt2pt_information(SIZE(nodes), neighele, ele2node, p2ele, p2node)
+    end ASSOCIATE
+
+    RETURN
+  end SUBROUTINE read_2D_mesh_from_files
+  ! ---------------------------------------
+
+  SUBROUTINE read_node_file(filepath, filename, nodeobj)
+    ! here, "node" and "point" refer to the same thing.
+    USE derived_data_module, ONLY: geoph_EM_node_type
+    IMPLICIT NONE
+
+    INTEGER :: fid, npoint, i, inull
+    CHARACTER(LEN=*),INTENT(IN) :: filepath, filename
+    TYPE(geoph_EM_node_type),INTENT(INOUT),ALLOCATABLE :: nodeobj(:)
+
+    fid = 41
+    ! read .node file
+    OPEN(UNIT=fid, FILE= TRIM(ADJUSTL(filepath))//TRIM(ADJUSTL(filename)), STATUS = 'OLD')
+    READ(fid,*) npoint
+
+    IF(ALLOCATED(nodeobj) .EQV. .TRUE.)  DEALLOCATE( nodeobj );  ALLOCATE( nodeobj(npoint) )
+
+    DO i = 1, npoint
+       ! In 2-D Triangle files, boundary marker is 0, -1, or 1, or other user-defined values.
+       ! In 2-D mesh, y is undefined.
+       READ(fid,*)  inull, nodeobj(i)%x, nodeobj(i)%z, nodeobj(i)%bud
+    END DO
+    CLOSE(fid)
+  end SUBROUTINE read_node_file
+
+  ! ---------------------------------------
+
+  SUBROUTINE check_node_boundary(nodeobj)
+    ! here, "node" and "point" refer to the same thing.
+    ! -- ONLY applicable for rectangular domains !
+    USE derived_data_module, ONLY: geoph_EM_node_type
+    IMPLICIT NONE
+
+    INTEGER :: npoint, i
+    TYPE(geoph_EM_node_type),INTENT(INOUT),ALLOCATABLE :: nodeobj(:)
+    REAL(DPR) :: min_value_x, min_value_z
+    REAL(DPR) :: max_value_x, max_value_z
+
+    CALL print_general_msg('Update points boundary marker information')
+    max_value_x = MAXVAL( nodeobj%x )
+    max_value_z = MAXVAL( nodeobj%z )
+    min_value_x = MinVAL( nodeobj%x )
+    min_value_z = MinVAL( nodeobj%z )
+
+    PRINT*, '------DEBUG---- Computational Domain infor ....'
+    PRINT*, '------DEBUG---- min_value_x = ', REAL( MINVAL( nodeobj%x ) )
+    PRINT*, '------DEBUG---- max_value_x = ', REAL( MAXVAL( nodeobj%x ) )
+    PRINT*, '------DEBUG---- min_value_z = ', REAL( MINVAL( nodeobj%z ) )
+    PRINT*, '------DEBUG---- max_value_z = ', REAL( MAXVAL( nodeobj%z ) )
+
+    npoint = SIZE(nodeobj)
+    DO i = 1, npoint
+       ! check all other points with marker beyond 0 and 1 values
+       IF( nodeobj(i)%bud /= 1 .AND. nodeobj(i)%bud /= 0 ) THEN
+          IF( ABS( nodeobj(i)%x - max_value_x ) < tinyValue  .OR. &
+               ABS( nodeobj(i)%x - min_value_x ) < tinyValue  .OR. &
+               ABS( nodeobj(i)%z - max_value_z ) < tinyValue  .OR. &
+               ABS( nodeobj(i)%z - min_value_z ) < tinyValue )  THEN
+
+             nodeobj(i)%bud = 1
+          end IF
+       END IF
+    end DO
+  end SUBROUTINE check_node_boundary
+
+  SUBROUTINE update_node_regional_marker()
+
+    !--set up regional marker for each node
+    ! For a point shared by many cells:
+    ! diff region's marker: 10   20  30  ... etc
+    ! each element's reg:   1    0   0
+    !                       0    1   0
+    !                       0    1   0
+    !                       0    0   1
+    !                  -----------------
+    !     in total          1    2   1
+    ! which means: the point is shared by four elements from 3 diff regions
+    !    with 1 ele from '10'-region, 
+    !    with 2 eles from '20'-region, 
+    !    with 1 ele from '30'-region, 
+    !--Note: need mesh information: ele2node
+    !        need the node entity
+    IMPLICIT NONE
+    INTEGER :: npoint, nregion, nele
+    INTEGER,ALLOCATABLE   :: nodeRegCounter(:,:)
+    INTEGER    :: nnon
+    INTEGER    :: i, j, k
+
+    npoint = SIZE(nodes); nele = SIZE(ele2node, 1); nregion = SIZE(mesh_par%regionMark)
+    IF( ALLOCATED(nodeRegCounter) .EQV. .TRUE.) DEALLOCATE(nodeRegCounter)
+    ALLOCATE( nodeRegCounter(npoint, nregion) )
+    nodeRegCounter = 0
+
+    ele1: DO i = 1, nele
+       DO j = 1, nregion
+          ! regional marker of the element equals to which value in array of all markers?
+          IF ( mesh_par%regionMark(j) == ele2node(i, 4) )  THEN
+             !! 'j' is the right region index
+             node3: DO k = 1, 3
+                ! counter of the corresponding node pluses one
+                nodeRegCounter( ele2node(i, k), j ) = nodeRegCounter( ele2node(i, k), j ) + 1
+             end DO node3
+          ENDIF
+       ENDDO
+    end DO ele1
+
+    DO i = 1, npoint
+       ! get the number of non-zero markers of all regions for each node
+       nnon = COUNT( nodeRegCounter(i, :) /= 0)
+
+       IF( nnon <= 0 )  THEN
+          CALL print_debug_msg('At Point', i)
+          CALL report_error('Regional marker searching for this point failed')
+
+       ELSEIF( nnon == 1 ) THEN
+          ! when the node is shared by only one region,
+          ! which region's marker for this node is nonzero?
+          ! reg stores all the regional markers of those regions sharing the node
+          ALLOCATE( nodes(i)%reg( nnon ) )
+          nr:DO j = 1, nregion
+             IF( nodeRegCounter(i, j) /= 0 )  THEN
+                ! set up regional marker for this node
+                nodes(i)%reg(1) = mesh_par%regionMark(j)
+                EXIT nr
+             ENDIF
+          ENDDO nr
+       ELSEIF( nnon >= 2 ) THEN
+          ! when the node is shared by more than one regions
+          ALLOCATE( nodes(i)%reg( nnon ) )
+          nodes(i)%reg = 0
+          k = 0
+          DO j = 1, nregion
+             IF( nodeRegCounter(i, j) /= 0 )  THEN
+                ! set up reginal marker for the node
+                ! -- store all the markers of those regions that share the node
+                ! -- the markers are set by the user when meshing the domain, and have
+                !    no repeated values (each marker is unique)
+                k = k + 1
+                nodes(i)%reg( k ) = mesh_par%regionMark(j)
+             end IF
+          end do
+       ENDIF
+    end DO
+    DEALLOCATE( nodeRegCounter )
+    RETURN
+  CONTAINS
+    SUBROUTINE report_error(content)
+      implicit none
+      CHARACTER(*),INTENT(IN)  :: content
+      PRINT*,'Fatal error: ', content
+      STOP
+    end SUBROUTINE report_error
+  end SUBROUTINE update_node_regional_marker
+
+
+  
+  ! ---------------------------------------  
+  SUBROUTINE read_element_file(filepath, filename, attriMarker, eleobj)
+    IMPLICIT NONE
+    INTEGER :: fid, nele, i, inull
+    CHARACTER(LEN=*),INTENT(IN) :: filepath, filename
+    INTEGER,INTENT(IN) :: attriMarker(:)  ! elemental attribute markers
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: eleobj(:,:)
+
+    fid = 41
+    ! read .ele file
+    OPEN(UNIT=fid, FILE= TRIM(ADJUSTL(filepath))//TRIM(ADJUSTL(filename)), STATUS = 'OLD')
+    READ(fid, *) nele
+    IF(ALLOCATED(eleobj) .EQV. .TRUE.)  DEALLOCATE( eleobj )
+    ALLOCATE( eleobj(nele, 4) )
+    DO i = 1, nele
+       !--node1, node2, node3, ele-regional marker
+       READ(fid, *) inull, eleobj(i,1), eleobj(i,2), eleobj(i,3), eleobj(i,4)
+
+       ! If elemental attribute marker from ele file is outside the range of values that
+       ! are defined when doing the meshing, then check such situations.
+       IF( ANY( attriMarker == eleobj(i,4) ) .EQV. .FALSE. )  THEN
+          PRINT*, ''; PRINT*, 'Error: the elemental region mark value: ', eleobj(i,4),' for the ', i, &
+               '-th element/record from the file has no match in the defined mark values !'
+          PRINT*, 'Program terminated by <STOP> !'
+          STOP
+       end IF
+    end DO
+    CLOSE(fid)
+  end SUBROUTINE read_element_file
+  ! ---------------------------------------
+  SUBROUTINE read_edge_file(filepath, filename, edgeobj)
+    IMPLICIT NONE
+    INTEGER :: fid, nedge, i, inull
+    CHARACTER(LEN=*),INTENT(IN) :: filepath, filename
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: edgeobj(:,:)
+
+    fid = 41
+    ! read .edge file
+    OPEN(UNIT=fid, FILE= TRIM(ADJUSTL(filepath))//TRIM(ADJUSTL(filename)), STATUS = 'OLD')
+    READ(fid, *) nedge
+    ! read .edge file (as output file with Triangle (v1.6, 2005) flag '-e' used)
+    IF(ALLOCATED(edgeobj) .EQV. .TRUE.)  DEALLOCATE( edgeobj );  ALLOCATE( edgeobj(nedge, 3) )
+    DO i = 1, nedge
+       !--index of edge, node1, node2, bound marker
+       READ(fid, *) inull, edgeobj(i,1), edgeobj(i,2), edgeobj(i,3)
+    end DO
+    CLOSE(fid)
+  end SUBROUTINE read_edge_file
+
+  SUBROUTINE check_edge_boundary(nodeobj, edgeobj)
+    ! make sure the boundary edge markers are OK.
+    USE derived_data_module, ONLY: geoph_EM_node_type
+    IMPLICIT NONE
+    INTEGER :: i, nedge
+    TYPE(geoph_EM_node_type),INTENT(IN) :: nodeobj(:)
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: edgeobj(:,:)
+
+    nedge = SIZE(edgeobj, 1)
+    DO i = 1, nedge
+       ! The edge boundary marker may not be reliable for it being used to detect actual boundary edges; instead,
+       !  the status of a boundary edge is calculated here: if both ends of an edge are boundary nodes, then the
+       !  edge is a boundary edge, otherwise it is not on the boundaries.
+       ! Best to be called/executed after reading .node file
+       IF( nodeobj(edgeobj(i,1))%bud == 1 .AND. nodeobj(edgeobj(i,2))%bud == 1 ) THEN
+          edgeobj(i,3) = 1  ! boundary edges
+       ELSE
+          edgeobj(i,3) = 0   ! non-boundary edges
+       ENDIF
+    end DO
+
+    RETURN
+  end SUBROUTINE check_edge_boundary
+
+  ! ---------------------------------------
+  SUBROUTINE read_neigh_element_file(filepath, filename, neiobj)
+    ! neighbouring triangle facets for a particular triangle facet.
+    IMPLICIT NONE
+    INTEGER :: fid, i, inull, nele
+    CHARACTER(LEN=*),INTENT(IN) :: filepath, filename
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: neiobj(:,:)
+
+    fid = 41
+    ! read .neigh file
+    OPEN(UNIT=fid, FILE= TRIM(ADJUSTL(filepath))//TRIM(ADJUSTL(filename)), STATUS = 'OLD')
+    READ(fid, *) nele
+    IF(ALLOCATED(neiobj) .EQV. .TRUE.)  DEALLOCATE( neiobj );   ALLOCATE( neiobj(nele, 3) )
+    DO i = 1, nele
+       !--ele1, ele2, ele3 (-1:no neighbour for this side)
+       READ(fid, *) inull, neiobj(i,1), neiobj(i,2), neiobj(i,3)
+    end DO
+    CLOSE(fid)
+  end SUBROUTINE read_neigh_element_file
+
+  ! ---------------------------------------
+  SUBROUTINE calculate_pt2pt_information(np, neiobj, eleobj, pt2ele_obj, pt2pt_obj)
+    ! find the connectivity among points (to elements, to edges) based on the available mesh information.
+    IMPLICIT NONE
+    INTEGER :: i
+    INTEGER,INTENT(IN) :: np  ! # of total nodes
+    INTEGER,INTENT(IN) :: neiobj(:,:), eleobj(:,:)
+    TYPE(pt2ele_type),INTENT(INOUT),ALLOCATABLE :: pt2ele_obj(:)  ! point-2-all-connected-element infor
+    TYPE(pt2pt_type),INTENT(INOUT),ALLOCATABLE :: pt2pt_obj(:)  ! point2-all-connected-point infor
+
+
+    !np = SIZE()
+    IF(ALLOCATED(pt2ele_obj) .EQV. .TRUE.)  DEALLOCATE(pt2ele_obj); ALLOCATE( pt2ele_obj(np) )
+    IF(ALLOCATED(pt2pt_obj) .EQV. .TRUE.)  DEALLOCATE(pt2pt_obj);  ALLOCATE( pt2pt_obj(np) )
+    CALL print_general_msg('Searching calculation for local pt2ele and pt2pt Connectivity in an unstructured mesh')
+    CALL print_debug_msg('total # of points',np)
+
+    DO i = 1, np
+       IF( (modelling%global_FE_search .EQV. .FALSE.) ) THEN
+          CALL connected_cells_for_node_search_fast( i, neiobj, eleobj, pt2ele_obj(i)%ele )
+          CALL percentage_display(i, np)
+       ELSE
+          CALL connected_cells_for_node_search_slow( i, eleobj, pt2ele_obj(i)%ele )
+          CALL percentage_display(i, np)
+       END IF
+       CALL connected_nodes_for_node_search( pt2ele_obj(i)%ele, eleobj, pt2pt_obj(i)%nodes )
+    end DO
+  end SUBROUTINE Calculate_Pt2pt_Information
+  
+  ! -----------------------------------------------------------------------
+  SUBROUTINE calculate_element_2_edge_information(ele2node_obj, edge2node_obj, ele2edge_obj)
+    ! Every 2-D triangular cell has 3 edges
+    IMPLICIT NONE
+    INTEGER,INTENT(IN) :: ele2node_obj(:,:)  ! edge-2-node information
+    INTEGER,INTENT(IN) :: edge2node_obj(:,:)
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: ele2edge_obj(:,:)
+    INTEGER,ALLOCATABLE :: intersect(:)
+    INTEGER :: errflag, k, m, i, nele, nedge
+
+    nele = SIZE(ele2node_obj, 1)
+    nedge = SIZE(edge2node_obj, 1)
+    IF( ALLOCATED(ele2edge_obj) ) DEALLOCATE(ele2edge_obj); ALLOCATE( ele2edge_obj(nele, 3) )
+
+    ! brute-force search way
+    NS: DO k = 1, nele
+       m = 0  ! # of found edges
+       ND: DO i = 1, nedge
+          CALL find_intersect_integer(edge2node_obj(i,1:2), ele2node_obj(k, 1:3), intersect, errflag)
+          IF( errflag ==0 .AND. (SIZE(intersect) == 2) ) THEN
+             ! a shared edge
+             m = m + 1
+             ele2edge_obj(k, m) = i
+          END IF
+          ! IF( m == 3) EXIT ND    ! to save time
+       END DO ND
+    END DO NS
+
+    RETURN
+  end SUBROUTINE calculate_element_2_edge_information
+  
+  ! -----------------------------------------------------------------------
+  SUBROUTINE calculate_local_edge_connectivity(edgeobj, ele2eg_obj, pt2ele_obj, eg2ele_obj, eg2eg_obj)
+    ! Find the neighbouring edges (including the test edge) for a particular edge in the mesh.
+    ! --This information is necessary for vector-FE and high-order scalar FE methods.
+    IMPLICIT NONE
+
+    INTEGER,INTENT(IN) :: edgeobj(:,:)  ! edge-2-node information (i.e., its two end points)
+    INTEGER,INTENT(IN) :: ele2eg_obj(:,:)  ! element-2-edge information 
+    TYPE(pt2ele_type),INTENT(IN) :: pt2ele_obj(:)  ! local point-to-element information
+    TYPE(pt2ele_type),INTENT(INOUT),ALLOCATABLE :: eg2ele_obj(:)
+    TYPE(pt2edge_type),INTENT(INOUT),ALLOCATABLE :: eg2eg_obj(:)
+    INTEGER :: i, nedge, general_errFlag
+    CHARACTER(LEN=200) :: subroutineTitle = "calculate_local_edge_connectivity"
+
+    nedge = SIZE( edgeobj, 1)
+    CALL print_debug_msg('Total number of edges: ', nedge)
+    CALL print_general_msg('Local Edge connectivity edge2edge searching calculation (after point-element connectivity search)...')
+
+    IF( ALLOCATED(eg2ele_obj) ) DEALLOCATE(eg2ele_obj);  ALLOCATE( eg2ele_obj(nedge) )
+    IF( ALLOCATED(eg2eg_obj) ) DEALLOCATE(eg2eg_obj);  ALLOCATE( eg2eg_obj(nedge) )
+
+    DO i = 1, nedge
+       ! make use of p2ele information (vertex-to-all-connected-elements) to find edge-to-element information
+       CALL find_intersect_integer( pt2ele_obj( edgeobj(i,1) )%ele, pt2ele_obj( edgeobj(i,2) )%ele, &
+            eg2ele_obj( i )%ele, general_errFlag )
+
+       ! check for impossibilities
+       IF( general_errFlag /= 0 ) THEN
+          PRINT*, ''; PRINT*,'In <'//TRIM(ADJUSTL(subroutineTitle))//'>'
+          PRINT*,'Error: no shared elements found for the ', i, '-th global edge during 2D edge-connectivity searching !'
+          PRINT*, 'Program terminated by <STOP>  !';  STOP
+       ENDIF
+
+       ! find edge-to-edge information
+       CALL connected_edges_for_edge_search( eg2ele_obj(i)%ele, ele2eg_obj, eg2eg_obj(i)%edge )
+       CALL percentage_display(i, nedge)
+    end DO
+
+    RETURN
+  end SUBROUTINE calculate_local_edge_connectivity
+
+  ! =====================================
+  SUBROUTINE set_cell_physical_property_2d(PropType)
+    IMPLICIT NONE
+    CHARACTER(LEN=*),INTENT(IN) :: PropType
+    INTEGER :: i, nele, j, mark_value
+    CHARACTER(LEN=200) :: subroutineTitle = "set_cell_physical_property_2d"
+
+    IF( TRIM(ADJUSTL(PropType)) == 'EM') THEN
+       nele = SIZE( ele2node, 1)
+       IF( ALLOCATED(cellsigma) ) DEALLOCATE(cellsigma);  ALLOCATE( cellsigma(nele) )
+       ! loop through all elements to get cells' conductivity information
+       ! the ordering of elements is based on records in files (meshing tools)
+       cellsigma = -1.0
+
+       DO i = 1, nele
+          mark_value = ele2node( i, 4 )
+          FindCellMarker: DO j = 1, SIZE( mesh_par%regionMark )
+             IF( mesh_par%regionMark(j) == mark_value)  THEN
+                cellsigma( i ) = EM_generic%cond( j )
+                EXIT FindCellMarker
+             END IF
+          END DO FindCellMarker
+
+          IF( cellsigma(i) < 0.0 )  THEN
+             PRINT*, ''; PRINT*,'In <'//TRIM(ADJUSTL(subroutineTitle))//'>'
+             PRINT*,'Error: the sigma of the ', i, '-th global element is not successfully assigned !'
+             PRINT*, 'Program terminated by <STOP>  !';     STOP
+          END IF
+       end DO
+    ELSE
+       CALL print_general_msg('No property type recognized in setting up 2D cell-based physical properties ! ')
+    ENDIF
+
+    RETURN
+  end SUBROUTINE set_cell_physical_property_2d
+
+  ! ----------------------------------------------------------------------------------
+
+  SUBROUTINE connected_cells_for_node_search_fast( ipoint, NeighEleInfo, ele2nodeInfo, list)
+    ! NOTE: need mesh information: ele2node, neighele
+    !-- Decide what entries in 'elements' should be added to the 'list'
+    !
+    !-- elements : global indexes all neighbouring elements of a 
+    !       particular element);  value can be -1 (no neighbour).
+    !
+    !-- SearchedList: stores elements existing in the list but not searched.
+    !       newly added element in 'list' is said to be 'not searched' before the search.
+    IMPLICIT NONE
+
+    INTEGER,INTENT(INOUT),ALLOCATABLE :: list(:)
+    INTEGER,INTENT(IN) :: ipoint
+    INTEGER :: firstElement
+    INTEGER,INTENT(IN) :: NeighEleInfo(:,:), ele2nodeInfo(:,:)
+
+    INTEGER :: k, ListSize, localNele, whichNeigh, nextelement, elements(3)
+    INTEGER, ALLOCATABLE  :: SearchedList(:)
+
+    ! At first, Find the first parent element
+    DO k = 1, SIZE(ele2nodeInfo, 1) ! over all elements
+       IF( ANY(ele2nodeInfo(k, 1:3) == ipoint ) ) THEN
+          firstElement = k
+          EXIT   ! search only ONCE
+       END IF
+    END DO
+    CALL add_to_list_integer( list, firstElement)   ! the first element is added
+
+    localNele = SIZE( elements )
+
+    elements = NeighEleInfo( firstElement, 1:3)    ! the 3 neighbouring elements for the 1st tested cell
+
+    CALL add_to_list_integer( SearchedList, firstElement)  ! put the first element  on the searched list   
+
+    Search: DO
+       ListSize = SIZE(list)    ! current list size
+
+       NEI: DO k = 1, localNele
+          whichNeigh = elements( k )
+          ! if the testing neighbour element is ALREADY on the existing list
+          IF(  ANY( list == whichNeigh )  )  THEN     
+             ! simply skip the rest DO loop here, go to the next neighbour element
+             CYCLE NEI                                                 
+          ELSEIF( whichNeigh <= 0 ) THEN
+             ! This neighbouring element is a fictitious one, i.e., no neighbour here (because it's a boundary facet)
+             CYCLE NEI 
+          ELSE
+             IF(  COUNT( ele2nodeInfo( whichNeigh, 1:3) == ipoint  ) == 1)  THEN
+                ! if one and only one of the THREE vertices is the current test point, then a
+                !    parent tetrahedron is found.
+                CALL add_to_list_integer( list,  whichNeigh ) 
+                CYCLE NEI
+             ELSE
+                ! it is not on the list, but also not a parent element
+                CYCLE NEI                                          
+             END IF
+          ENDIF
+       end DO NEI
+
+       ! now check if the list and searched list have been updated
+       IF( SIZE(list) == ListSize .AND. SIZE(list) == SIZE(SearchedList) ) THEN
+          ! No other eligible neighbouring element found: end of the current search route.
+          EXIT Search
+
+       ELSEIF( SIZE(list) > ListSize .OR. SIZE(list) > SIZE(SearchedList) ) THEN
+          ! List has been changed (the incremental could be more than 1 element)
+          ! There are newly added elements in the list, but not searched yet.
+          nextelement = list( SIZE(SearchedList) + 1 )
+
+          CALL add_to_list_integer( SearchedList, nextelement)  ! Note, Searched List will always grow size by one each time.
+          elements = NeighEleInfo( nextelement, 1:3 )
+          CYCLE Search           
+       END IF
+    ENDDO Search
+
+    RETURN
+  end SUBROUTINE connected_cells_for_node_search_fast
+
+  ! -------------------------------------
+  SUBROUTINE connected_cells_for_node_search_slow( ipoint, ele2nodeInfo, list)
+    !! need mesh information: ele2node
+    IMPLICIT NONE
+
+    INTEGER,INTENT(INOUT),ALLOCATABLE ::   list(:)
+    INTEGER,INTENT(IN) :: ipoint  ! input, the test global point index
+    INTEGER,INTENT(IN) :: ele2nodeInfo(:,:)
+    INTEGER :: k,  nele
+
+    nele = SIZE( ele2nodeInfo, 1 )
+    DO k = 1, nele
+       IF( ANY(ele2nodeInfo(k, 1:3) == ipoint ) ) THEN
+          CALL add_to_list_integer( list, k)
+       END IF
+    END DO
+    RETURN
+  end SUBROUTINE connected_cells_for_node_search_slow
+
+  ! =====================================
+
+  SUBROUTINE connected_nodes_for_node_search(elements, ele2nodeInfo, list)
+    ! To find all the connecting nodes in an unstructured triangular mesh for
+    !   a test node (the resultant list includes the test node itself); 
+    !
+    ! -- use connected element information, elements
+    ! -- Should always be called after element-search subroutine.
+    ! -- INPUT elements: store all the connecting elements for the node
+    IMPLICIT NONE
+    INTEGER,INTENT(INOUT),ALLOCATABLE ::   list(:)
+    INTEGER,INTENT(IN) ::    elements(:), ele2nodeInfo(:,:)
+    INTEGER   :: isize, k, j, m, currentpoint
+
+    isize = SIZE(elements)
+    !!ALLOCATE( list(1) )   ! if allocatable array is not allocated, the size of it is unpredictable
+
+    m = 0
+    DO k = 1, isize
+       DO j = 1, 3   ! all 3 vertices for each 2D element
+          m = m + 1
+          currentpoint = ele2nodeInfo( elements(k), j)
+
+          IF( m == 1 ) THEN
+             CALL add_to_list_integer( list, currentpoint)
+          ELSE
+             IF( .NOT. ANY( list == currentpoint) ) CALL add_to_list_integer( list, currentpoint)
+          ENDIF
+       ENDDO
+    ENDDO
+
+    RETURN
+  end SUBROUTINE connected_nodes_for_node_search
+
+
+  ! =====================================
+
+  SUBROUTINE connected_edges_for_edge_search( eg2ele_list, ele2edge_obj, eg_list)
+    ! To find all the connecting edges in an unstructured tetrahedral mesh for
+    !   a test edge; The connecting edges are defined as all edges from the connecting
+    !   elements (i.e., all elements that SHARE the whole test edge).
+    !
+    ! -- use connected element information (eg2ele_list) and ele2edge array
+
+    ! Output:
+    !  list: a list of all connected edges, including the test edge
+    IMPLICIT NONE
+    INTEGER,INTENT(IN) :: eg2ele_list(:), ele2edge_obj(:,:)
+    INTEGER,INTENT(INOUT),ALLOCATABLE ::   eg_list(:)
+
+    INTEGER   :: isize, k, j, m, currentEdge, currentEle
+
+
+    isize = SIZE(eg2ele_list)  ! number of connected elements for the test edge
+
+    m = 0
+    DO k = 1, isize
+       currentEle = eg2ele_list(k)
+       DO j = 1, 3     ! each element (triangle) has 3 edges
+          m = m + 1
+          currentEdge = ele2edge_obj( currentEle, j)
+
+          IF( m == 1 ) THEN
+             CALL add_to_list_integer( eg_list, currentEdge)
+          ELSE
+             IF( .NOT. ANY( eg_list == currentEdge) ) CALL add_to_list_integer( eg_list, currentEdge)
+          ENDIF
+       ENDDO
+    ENDDO
+
+    RETURN
+  end SUBROUTINE connected_edges_for_edge_search
+
+  !! ------------------------------------------------------------------------------------------
+
+
+end MODULE Mesh2d_Discretization
+
+
+

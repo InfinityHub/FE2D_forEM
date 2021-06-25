@@ -1,0 +1,2035 @@
+MODULE modelling_parameter
+  ! read all modelling parameters from files
+  USE float_precision, ONLY: DPR
+  USE strings_mod, ONLY: WORDLEN
+
+  IMPLICIT NONE
+
+  PRIVATE
+
+  INTEGER,PARAMETER :: PATHLEN = 400
+  CHARACTER(LEN=WORDLEN),PROTECTED :: thisModule = "modelling_parameter"
+  ! define a type that contains necessary parameters
+  TYPE modelling_para_type
+     CHARACTER(LEN=2) :: DataType        ! Geophysical data type, 'EM' or 'GT'
+     CHARACTER(LEN=10) :: DiscretMode    ! MESHFREE, or FE, or ANA
+     INTEGER :: PDEtype                  ! 1: 3d A-phi;  2: 3D H-field, 3: 2D MT (TE,TM)
+     INTEGER :: spaceDim                 ! spatial dimension (2, or 3)
+
+     ! Output file control
+     CHARACTER(LEN=PATHLEN):: measurement_file
+     LOGICAL :: WriteXYZ_paraview   ! XYZ of measurement sites for Paraview
+     LOGICAL :: WriteAphi_data   ! A-phi potential data output
+     LOGICAL :: WriteDivA_data   ! divergence A potential data output
+     LOGICAL :: WriteVisual_data   ! 2-D visualization data output
+     CHARACTER(LEN=PATHLEN):: outputfilepath
+     !the reference path/directory is the true parent directory
+     CHARACTER(LEN=PATHLEN):: reference_path
+
+     ! meshfree
+     LOGICAL :: continuous_RBFFD      ! T(rue) or F(alse)
+     LOGICAL :: multi_tree                  ! multiple trees for post-processing ?
+     INTEGER :: nodes_per_domain            ! e.g, 30 for 3D, for linear systems
+     INTEGER :: npostTest                  ! after solving, or post-processing
+     LOGICAL :: auto_nodes_num             ! automatically decide # of nodes/subdomain ?
+     INTEGER :: polynomial_degree
+     CHARACTER(len=4)   :: RBF_type        ! GA, IM, PHS1,PHS3, PHS5, PHS7
+     REAL(DPR) :: shape_value
+     LOGICAL :: PHS_scale
+
+     ! Finite element
+     LOGICAL :: global_FE_search
+     INTEGER :: FEdegree     ! so far: 1 (linear) or 2 (quadratic)
+
+     ! linear system solver
+     LOGICAL  :: Iter_solver      !  1: Iterative solvers; otherwise direct solvers
+     CHARACTER(LEN=8)   :: iter_solver_name  ! GMRES, BCGSTAB
+     LOGICAL  :: solver_verbose              ! if output info
+  end type modelling_para_type
+
+
+  TYPE mesh_para_type
+     ! Mesh
+     INTEGER :: nregion
+     CHARACTER(LEN=PATHLEN) :: regionMarkFile   ! mesh region markers
+     INTEGER,ALLOCATABLE :: regionMark(:)
+     CHARACTER(LEN=PATHLEN):: meshfilepath   != './input2/'
+     CHARACTER(LEN=PATHLEN)  :: basefilename   ! base name of mesh files
+  end type mesh_para_type
+
+  TYPE CSEM_type
+     ! CSEM
+     REAL(DPR) :: SourceCurrent
+     REAL(DPR) :: moment
+     INTEGER :: nTX                  ! # of transmitters
+     INTEGER :: source_ID  ! e.g. 1000; All CSEM source points boundary marker will be equal to or greater than this value
+     LOGICAL :: CSEM_PS_SWITCH       ! Primary-Secondary (PS) CSEM or not
+     CHARACTER(LEN=20) :: PS_ModelCode
+     LOGICAL :: write_1D_EMfield     ! Analytical solution (of some 1-D ideal models)
+  end type CSEM_type
+
+  TYPE :: EM_generic_type
+     ! EM general
+     CHARACTER(LEN=4) :: EMsurveyType  ! CSEM (includes AED,LOOP,DC, etc controlled source types), MT
+     CHARACTER(LEN=4) :: SourceType    ! AED(arbitrary electric dipole), LOOP(any closed-loop source), VMD(vertical magnetic dipole, or point magnetic dipole source), MT, MT2D, DC
+     REAL(DPR) :: freq
+     REAL(DPR) :: omega
+     INTEGER   ::  nfreq
+     CHARACTER(LEN=PATHLEN)  :: FreqListFile   ! files containing freq list for multi-freq case
+     REAL(DPR),ALLOCATABLE :: many_freq(:)
+     CHARACTER(LEN=PATHLEN)  :: condRegionFile   ! files containing cond list
+     INTEGER   ::  ncond
+     REAL(DPR),ALLOCATABLE :: cond(:)   ! conductivities of uniform regions
+     CHARACTER(LEN=20) :: ModelCode
+  end type EM_generic_type
+
+
+  TYPE :: MT_type
+     ! MT parameters
+     CHARACTER(LEN=10) :: MT_boundary_model   ! 'HALF' or '1D' background model
+     CHARACTER(LEN=PATHLEN)  :: MT1D_condFile   ! files containing the list for 1d subsurface conductivities (S/m)
+     CHARACTER(LEN=PATHLEN)  :: MT1D_absciFile   ! files containing list of 1d interior interface z-coordinates (metre)
+     REAL(DPR),ALLOCATABLE :: MT1D_cond(:)      ! 1D background conductivities (subsurface only)
+     REAL(DPR),ALLOCATABLE :: z_absci(:)      ! 1D background z-coordinates of interior interfaces (+z upward)
+     INTEGER :: nlayer                        ! # of subsurface layers (no air layer)
+  end type MT_type
+
+
+  TYPE :: EM1D_type
+     ! EM 1D
+     LOGICAL :: EM_Key1D
+     ! finite length dipole's two ends
+     REAL(DPR)  :: EM_DP_end1(3)    ! in metre, e.g. (/-0.5d0, 0.d0, 0.d0/), Electric dipole
+     REAL(DPR)  :: EM_DP_end2(3)    ! in metre, e.g. (/0.5d0, 0.d0, 0.d0/)
+     REAL(DPR)  :: PrimarySigma     ! in S/m
+     REAL(DPR)  :: PS_offset(3)     ! 1D source offset from origin, e.g.(/0.d0, 0.d0, 0.D0/)
+     REAL(DPR)  :: PS_length        ! AED wire length
+  end type EM1D_type
+
+
+  TYPE grav_para_type
+     ! Gravity data
+     REAL(DPR),ALLOCATABLE :: dens(:)    ! density list of regions (kg/m^3)
+     CHARACTER(LEN=PATHLEN) :: basicOutputFileName
+     ! whether to calculate gravity gradients (Uxx, Uxy, Uxz, Uyy, Uyz, Uzz) ?
+     LOGICAL :: ggradient          ! (t/T for true/yes, and f/F for false/no)
+     ! using exact non-zero boundary conditions ? This is only for very small models,
+     ! since the zero values are always approximated values
+     LOGICAL :: ExactGraBCs        ! 't' or 'f'
+  end type grav_para_type
+
+
+  TYPE fwdinp_type
+     ! fwd type, pointers to all other input file names.
+     CHARACTER(LEN=PATHLEN) :: input_path
+     CHARACTER(LEN=PATHLEN) :: input_mesh
+     CHARACTER(LEN=PATHLEN) :: input_modelling
+     CHARACTER(LEN=PATHLEN) :: input_EM_generic
+     CHARACTER(LEN=PATHLEN) :: input_CSEM
+     CHARACTER(LEN=PATHLEN) :: input_MT
+     CHARACTER(LEN=PATHLEN) :: input_EM1D
+  end type fwdinp_type
+
+  TYPE(modelling_para_type) :: modelling
+  TYPE(mesh_para_type) :: mesh_par
+  TYPE(EM_generic_type) :: EM_generic
+  TYPE(MT_type) :: MT
+  TYPE(CSEM_type) :: CSEM
+  TYPE(EM1D_type) :: EM1D
+  TYPE(grav_para_type) :: GT
+
+
+
+  PUBLIC :: modelling, mesh_par, EM_generic, MT, CSEM, EM1D, GT, get_EM_fwd_parameter, &
+       reset_PHS_scale_switcher, reset_frequency, renew_present_freqDependent_output_path, &
+       setup_multi_freq_directories, reset_output_directory
+
+
+
+
+CONTAINS
+
+  SUBROUTINE modelling_para_clear(modelling_para)
+    IMPLICIT NONE
+    TYPE(modelling_para_type),INTENT(INOUT) :: modelling_para
+    modelling_para%DataType = ''
+    modelling_para%DiscretMode = ''
+    modelling_para%PDEtype = 0
+    modelling_para%spaceDim = 0
+    modelling_para%measurement_file = ''
+    modelling_para%outputfilepath = ''
+    modelling_para%reference_path = ''
+    modelling_para%WriteAphi_data = .FALSE.
+    modelling_para%WriteDivA_data = .FALSE.
+    modelling_para%WriteVisual_data = .FALSE.
+    modelling_para%WriteXYZ_paraview = .FALSE.
+    modelling_para%continuous_RBFFD = .TRUE.
+    modelling_para%multi_tree = .FALSE.
+    modelling_para%auto_nodes_num = .FALSE.
+    modelling_para%nodes_per_domain = 0
+    modelling_para%npostTest = 0
+    modelling_para%polynomial_degree = 0
+    modelling_para%RBF_type = ''
+    modelling_para%shape_value = 0.0
+    modelling_para%PHS_scale = .TRUE.
+
+    modelling_para%FEdegree = 0
+    modelling_para%global_FE_search = .FALSE.
+
+    modelling_para%Iter_solver = .FALSE.
+    modelling_para%iter_solver_name = 'NULL'
+    modelling_para%solver_verbose = .FALSE.
+  end SUBROUTINE modelling_para_clear
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE modelling_para_print(modelling_para)
+    IMPLICIT NONE
+    TYPE(modelling_para_type),INTENT(IN) :: modelling_para
+    PRINT*, "modelling_para%DataType          = ", modelling_para%DataType
+    PRINT*, "modelling_para%DiscretMode       = ", modelling_para%DiscretMode
+    PRINT*, "modelling_para%PDEtype           = ", modelling_para%PDEtype
+    PRINT*, "modelling_para%spaceDim          = ", modelling_para%spaceDim
+    PRINT*, "modelling_para%measurement_file  = ", TRIM(modelling_para%measurement_file)
+    PRINT*, "modelling_para%outputfilepath    = ", TRIM(modelling_para%outputfilepath)
+    PRINT*, "modelling_para%WriteAphi_data    = ", modelling_para%WriteAphi_data
+    PRINT*, "modelling_para%WriteDivA_data    = ", modelling_para%WriteDivA_data
+    PRINT*, "modelling_para%WriteVisual_data  = ", modelling_para%WriteVisual_data
+    PRINT*, "modelling_para%WriteXYZ_paraview = ", modelling_para%WriteXYZ_paraview
+    PRINT*, ''
+    IF( TRIM(ADJUSTL(modelling_para%DiscretMode)) == 'MESHFREE') THEN
+       PRINT*, "modelling_para%continuous_RBFFD  = ", modelling_para%continuous_RBFFD
+       PRINT*, "modelling_para%multi_tree        = ", modelling_para%multi_tree
+       PRINT*, "modelling_para%auto_nodes_num    = ", modelling_para%auto_nodes_num
+       PRINT*, "modelling_para%nodes_per_domain  = ", modelling_para%nodes_per_domain
+       PRINT*, "modelling_para%npostTest         = ", modelling_para%npostTest
+       PRINT*, "modelling_para%polynomial_degree = ", modelling_para%polynomial_degree
+       PRINT*, "modelling_para%RBF_type          = ", modelling_para%RBF_type
+       IF( TRIM(ADJUSTL(modelling_para%RBF_type)) == 'GA') THEN
+          PRINT*, "modelling_para%shape_value       = ", REAL(modelling_para%shape_value)
+       END IF
+       PRINT*, "modelling_para%PHS_scale         = ", modelling_para%PHS_scale
+    END IF
+    IF( TRIM(ADJUSTL(modelling_para%DiscretMode)) == 'FE') THEN
+       PRINT*, "modelling_para%FEdegree          = ", modelling_para%FEdegree
+       PRINT*, "modelling_para%global_FE_search  = ", modelling_para%global_FE_search
+    END IF
+    PRINT*, ''
+    PRINT*, "modelling_para%Iter_solver       = ", modelling_para%Iter_solver
+    IF( modelling_para%Iter_solver ) THEN
+       PRINT*, "modelling_para%iter_solver_name  = ", modelling_para%iter_solver_name
+    END IF
+    PRINT*, "modelling_para%solver_verbose    = ", modelling_para%solver_verbose
+  end SUBROUTINE Modelling_Para_Print
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE mesh_para_clear(mesh_para)
+    IMPLICIT NONE
+    TYPE(mesh_para_type),INTENT(INOUT) :: mesh_para
+    mesh_para%nregion = 0
+    IF(ALLOCATED(mesh_para%regionMark)) DEALLOCATE(mesh_para%regionMark)
+    mesh_para%regionMarkFile = ''
+    mesh_para%meshfilepath = ''
+    mesh_para%basefilename = ''
+  end SUBROUTINE mesh_para_clear
+
+  SUBROUTINE mesh_para_print(mesh_para)
+    IMPLICIT NONE
+    TYPE(mesh_para_type),INTENT(IN) :: mesh_para
+    PRINT*, "mesh_para%nregion        = ", mesh_para%nregion
+    PRINT*, "mesh_para%regionMarkFile = ", TRIM(mesh_para%regionMarkFile)
+    PRINT*, "mesh_para%regionMark     = ", mesh_para%regionMark
+    PRINT*, "mesh_para%meshfilepath   = ", TRIM(mesh_para%meshfilepath)
+    PRINT*, "mesh_para%basefilename   = ", TRIM(mesh_para%basefilename)
+  end SUBROUTINE mesh_para_print
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE EM_generic_para_clear(EM_para)
+    IMPLICIT NONE
+    TYPE(EM_generic_type),INTENT(INOUT) :: EM_para
+    EM_para%EMsurveyType = ''
+    EM_para%SourceType = ''
+    EM_para%nfreq = 0
+    EM_para%freq = 0.0
+    EM_para%omega = 0.0
+    EM_para%FreqListFile = ''
+    IF(ALLOCATED(EM_para%many_freq)) DEALLOCATE(EM_para%many_freq)
+    EM_para%condRegionFile = ''
+    EM_para%ncond = 0
+    IF(ALLOCATED(EM_para%cond)) DEALLOCATE(EM_para%cond)
+    EM_para%ModelCode = 'NULL'
+  end SUBROUTINE  EM_generic_para_clear
+  ! ---------------------------------------------
+  SUBROUTINE EM_generic_para_print(EM_para)
+    IMPLICIT NONE
+    TYPE(EM_generic_type),INTENT(IN) :: EM_para
+    PRINT*, "EM_para%EMsurveyType   = ", EM_para%EMsurveyType
+    PRINT*, "EM_para%SourceType     = ", EM_para%SourceType
+    PRINT*, "EM_para%nfreq          = ", EM_para%nfreq
+    IF( EM_para%nfreq == 1) THEN
+       PRINT*, "EM_para%freq           = ", REAL(EM_para%freq)
+    ELSE
+       PRINT*, "EM_para%many_freq      = ", REAL(EM_para%many_freq)
+    END IF
+    PRINT*, "EM_para%FreqListFile   = ", TRIM(EM_para%FreqListFile)
+    PRINT*, "EM_para%condRegionFile = ", TRIM(EM_para%condRegionFile)
+    PRINT*, "EM_para%ncond          = ", EM_para%ncond
+    PRINT*, "EM_para%cond           = ", REAL(EM_para%cond)
+    PRINT*, "EM_para%ModelCode      = ", EM_para%ModelCode
+  end SUBROUTINE  EM_generic_para_print
+  ! ---------------------------------------------
+  SUBROUTINE CSEM_clear(CSEM)
+    IMPLICIT NONE
+    TYPE(CSEM_type),INTENT(INOUT) :: CSEM
+    CSEM%nTX = 0        ! CSEM
+    CSEM%SourceCurrent = 0.0
+    CSEM%moment = 0.0
+    CSEM%source_ID = 0
+    CSEM%CSEM_PS_SWITCH = .FALSE.
+    CSEM%PS_ModelCode = ''
+    CSEM%write_1D_EMfield = .FALSE.
+  end SUBROUTINE CSEM_Clear
+
+  SUBROUTINE CSEM_print(CSEM)
+    IMPLICIT NONE
+    TYPE(CSEM_type),INTENT(IN) :: CSEM
+    PRINT*, "CSEM%nTX              = ", CSEM%nTX
+    PRINT*, "CSEM%SourceCurrent    = ", REAL(CSEM%SourceCurrent)
+    PRINT*, "CSEM%moment           = ", REAL(CSEM%moment)
+    PRINT*, "CSEM%source_ID        = ", CSEM%source_ID
+    PRINT*, "CSEM%CSEM_PS_SWITCH   = ", CSEM%CSEM_PS_SWITCH
+    IF( CSEM%CSEM_PS_SWITCH ) THEN
+       PRINT*, "CSEM%PS_ModelCode     = ", CSEM%PS_ModelCode
+    END IF
+    PRINT*, "CSEM%write_1D_EMfield = ", CSEM%write_1D_EMfield
+  end SUBROUTINE CSEM_print
+
+
+  SUBROUTINE EM1D_clear(EM1D)
+    IMPLICIT NONE
+    TYPE(EM1D_type),INTENT(INOUT) :: EM1D
+    EM1D%EM_Key1D = .FALSE.       ! EM 1D
+    EM1D%EM_DP_end1 = 0.0
+    EM1D%EM_DP_end2 = 0.0
+    EM1D%PrimarySigma = 0.0
+    EM1D%PS_offset = 0.0
+    EM1D%PS_length = 0.0
+  end SUBROUTINE EM1D_clear
+
+  SUBROUTINE EM1D_print(EM1D)
+    IMPLICIT NONE
+    TYPE(EM1D_type),INTENT(IN) :: EM1D
+    PRINT*, "EM1D%EM_Key1D     = ", EM1D%EM_Key1D
+    PRINT*, "EM1D%EM_DP_end1   = ", EM1D%EM_DP_end1
+    PRINT*, "EM1D%EM_DP_end2   = ", EM1D%EM_DP_end2
+    PRINT*, "EM1D%PrimarySigma = ", EM1D%PrimarySigma
+    PRINT*, "EM1D%PS_offset    = ", EM1D%PS_offset
+    PRINT*, "EM1D%PS_length    = ", EM1D%PS_length
+  end SUBROUTINE EM1D_print
+
+  SUBROUTINE MT_clear(MT)
+    IMPLICIT NONE
+    TYPE(MT_type),INTENT(INOUT) :: MT
+    MT%MT_boundary_model  = ''
+    MT%nlayer = 0
+    MT%MT1D_condFile  = ''
+    MT%MT1D_absciFile  = ''
+    IF(ALLOCATED(MT%MT1D_cond)) DEALLOCATE(MT%MT1D_cond)
+    IF(ALLOCATED(MT%z_absci)) DEALLOCATE(MT%z_absci)
+  end SUBROUTINE MT_clear
+
+  SUBROUTINE MT_print(MT)
+    IMPLICIT NONE
+    TYPE(MT_type),INTENT(IN) :: MT
+    PRINT*, "MT%MT_boundary_model  = ", MT%MT_boundary_model
+    PRINT*, "MT%nlayer(boundary)   = ", MT%nlayer
+    IF(MT%MT_boundary_model == "1D") THEN
+       PRINT*, "MT%MT1D_cond          = ", REAL(MT%MT1D_cond)
+       PRINT*, "MT%MT1D_condFile      = ", TRIM(MT%MT1D_condFile)
+       PRINT*, "MT%z_absci            = ", REAL(MT%z_absci)
+       PRINT*, "MT%MT1D_absciFile     = ", TRIM(MT%MT1D_absciFile)
+    END IF
+  end SUBROUTINE MT_print
+
+
+  SUBROUTINE fwd_clear(fwdinp)
+    IMPLICIT NONE
+    TYPE(fwdinp_type),INTENT(INOUT) :: fwdinp
+    fwdinp%input_path = ''
+    fwdinp%input_modelling = ''
+    fwdinp%input_mesh = ''
+    fwdinp%input_EM_generic = ''
+    fwdinp%input_CSEM = ''
+    fwdinp%input_MT = ''
+    fwdinp%input_EM1D = ''
+  end SUBROUTINE fwd_clear
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+  SUBROUTINE modelling_read_parameter(modelling,t1,t2,ok,error)
+    ! Based on a subroutine from Peter
+    ! Deals with a line from an input file in format "name value".
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(modelling_para_type), INTENT(INOUT) :: modelling
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:9)=='datatype ') THEN
+       modelling%DataType = t2
+    ELSE IF (t1(1:12)=='discretmode ') THEN
+       modelling%DiscretMode = t2
+    ELSE IF (t1(1:8)=='pdetype ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%PDEtype
+    ELSE IF (t1(1:9)=='spacedim ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%spaceDim
+
+    ELSE IF (t1(1:17)=='measurement_file ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       modelling%measurement_file = t2       
+    ELSE IF (t1(1:15)=='outputfilepath ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       modelling%outputfilepath = t2
+       modelling%reference_path = t2
+    ELSE IF (t1(1:15)=='writeaphi_data ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%WriteAphi_data = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%WriteAphi_data = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+    ELSE IF (t1(1:15)=='writediva_data ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%WriteDivA_data = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%WriteDivA_data = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN   
+       END IF
+    ELSE IF (t1(1:17)=='writevisual_data ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%WriteVisual_data = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%WriteVisual_data = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN   
+       END IF
+    ELSE IF (t1(1:18)=='writexyz_paraview ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%WriteXYZ_paraview = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%WriteXYZ_paraview = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN   
+       END IF
+    ELSE IF (t1(1:17)=='continuous_rbffd ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%continuous_RBFFD = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%continuous_RBFFD = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:11)=='multi_tree ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%multi_tree = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%multi_tree = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:15)=='auto_nodes_num ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%auto_nodes_num = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%auto_nodes_num = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+    ELSE IF (t1(1:17)=='nodes_per_domain ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%nodes_per_domain
+    ELSE IF (t1(1:10)=='nposttest ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%npostTest
+
+    ELSE IF (t1(1:18)=='polynomial_degree ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%polynomial_degree
+    ELSE IF (t1(1:9)=='rbf_type ') THEN
+       modelling%RBF_type = t2
+    ELSE IF (t1(1:12)=='shape_value ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%shape_value
+    ELSE IF (t1(1:10)=='phs_scale ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%PHS_scale = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%PHS_scale = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:9)=='fedegree ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%FEdegree
+    ELSE IF (t1(1:25)=='global_fe_search ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%global_FE_search = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%global_FE_search = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:12)=='iter_solver ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%Iter_solver = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%Iter_solver = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:21)=='iter_solver_name ') THEN
+       modelling%iter_solver_name = t2
+    ELSE IF (t1(1:15)=='solver_verbose ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          modelling%solver_verbose = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          modelling%solver_verbose = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'modelling_read_parameter',t2)
+       !RETURN
+    END IF
+
+    RETURN
+    ! Error messaging code is below:
+
+  CONTAINS
+    SUBROUTINE error_80()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'modelling_read_parameter',t)
+    END SUBROUTINE error_80
+
+    SUBROUTINE error_70()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'unable to recognize the value string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'modelling_read_parameter',t)
+    END SUBROUTINE error_70
+  END SUBROUTINE modelling_read_parameter
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE mesh_read_parameter(mesh,t1,t2,ok,error)
+    ! setting parameters for mesh
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(mesh_para_type), INTENT(INOUT) :: mesh
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:8)=='nregion ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) mesh%nregion
+    ELSE IF (t1(1:15)=='regionmarkfile ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       mesh%regionMarkFile = t2
+    ELSE IF (t1(1:13)=='meshfilepath ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       mesh%meshfilepath = t2
+    ELSE IF (t1(1:13)=='basefilename ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       mesh%basefilename = t2
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'mesh_read_parameter',t2)
+       !RETURN
+    END IF
+
+    RETURN
+    ! Error messaging code is below:
+  CONTAINS
+    SUBROUTINE error_80()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'mesh_read_parameter',t)
+    END SUBROUTINE error_80
+  END SUBROUTINE Mesh_Read_Parameter
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE EM_generic_read_parameter(EM,t1,t2,ok,error)
+    ! setting parameters for mesh
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(EM_generic_type), INTENT(INOUT) :: EM
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:13)=='emsurveytype ') THEN
+       EM%EMsurveyType = t2
+    ELSE IF (t1(1:11)=='sourcetype ') THEN
+       EM%SourceType = t2
+    ELSE IF (t1(1:6)=='nfreq ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) EM%nfreq
+    ELSE IF (t1(1:5)=='freq ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) EM%freq
+    ELSE IF (t1(1:13)=='freqlistfile ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       EM%FreqListFile = t2
+    ELSE IF (t1(1:15)=='condregionfile ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       EM%condRegionFile = t2
+    ELSE IF (t1(1:10)=='modelcode ') THEN
+       EM%ModelCode = t2
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_parameter',t2)
+       !RETURN
+    END IF
+
+    RETURN
+    ! Error messaging code is below:
+  CONTAINS
+    SUBROUTINE error_80()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'EM_generic_read_parameter',t)
+    END SUBROUTINE error_80
+  END SUBROUTINE EM_Generic_Read_Parameter
+
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE CSEM_read_parameter(CSEM,t1,t2,ok,error)
+    ! setting parameters for mesh
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(CSEM_type), INTENT(INOUT) :: CSEM
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:14)=='sourcecurrent ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) CSEM%SourceCurrent
+    ELSE IF (t1(1:7)=='moment ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) CSEM%moment  
+    ELSE IF (t1(1:4)=='ntx ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) CSEM%nTX
+    ELSE IF (t1(1:10)=='source_id ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) CSEM%source_ID
+    ELSE IF (t1(1:15)=='csem_ps_switch ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          CSEM%CSEM_PS_SWITCH = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          CSEM%CSEM_PS_SWITCH = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+    ELSE IF (t1(1:17)=='write_1d_emfield ') THEN
+       IF (TRIM(ADJUSTL(t2))== 'f' .OR. TRIM(ADJUSTL(t2))== 'F') THEN
+          CSEM%write_1D_EMfield = .FALSE.
+       ELSEIF (TRIM(ADJUSTL(t2))== 't' .OR. TRIM(ADJUSTL(t2))== 'T') THEN
+          CSEM%write_1D_EMfield = .TRUE.
+       ELSE
+          CALL error_70()
+          IF (error_check(error)) RETURN
+       END IF
+
+    ELSE IF (t1(1:13)=='ps_modelcode ') THEN
+       CSEM%PS_ModelCode = t2
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'CSEM_read_parameter',t2)
+       !RETURN
+    END IF
+
+    RETURN
+    ! Error messaging code is below:
+  CONTAINS
+!!$    SUBROUTINE error_80()
+!!$      IMPLICIT NONE
+!!$      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+!!$      IF (error_check(error)) THEN
+!!$         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_parameter')
+!!$         RETURN
+!!$      END IF
+!!$      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'CSEM_read_parameter',t)
+!!$    END SUBROUTINE error_80
+
+    SUBROUTINE error_70()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'unable to recognize the value string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'CSEM_read_parameter',t)
+    END SUBROUTINE error_70
+  END SUBROUTINE CSEM_Read_Parameter
+
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE MT_read_parameter(MT,t1,t2,ok,error)
+    ! setting parameters for mesh
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(MT_type), INTENT(INOUT) :: MT
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:18)=='mt_boundary_model ') THEN
+       MT%MT_boundary_model = t2
+    ELSE IF (t1(1:7)=='nlayer ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) MT%nlayer
+    ELSE IF (t1(1:15)=='mt1d_abscifile ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       MT%MT1D_absciFile = t2
+    ELSE IF (t1(1:14)=='mt1d_condfile ') THEN
+       IF (LEN_TRIM(t2)==0) THEN
+          CALL error_80()
+          IF (error_check(error)) RETURN
+       END IF
+       MT%MT1D_condFile = t2
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_parameter',t2)
+       !RETURN
+    END IF
+    RETURN
+    ! Error messaging code is below:
+  CONTAINS
+    SUBROUTINE error_80()
+      IMPLICIT NONE
+      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+      IF (error_check(error)) THEN
+         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_parameter')
+         RETURN
+      END IF
+      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'MT_read_parameter',t)
+    END SUBROUTINE error_80
+  END SUBROUTINE MT_Read_Parameter
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE fwd_read_parameter(fwdinp,t1,t2,ok,error)
+    ! setting parameters (file names) for all input files
+    USE error_cls
+    USE strings_mod, ONLY: concatenate
+    USE FORTRAN_string_manipulation, ONLY: string_convert_to_lowercase
+    !USE fileio_mod_peter, ONLY: LINELEN
+
+    IMPLICIT NONE
+    TYPE(fwdinp_type), INTENT(INOUT) :: fwdinp
+    CHARACTER(LEN=*), INTENT(INOUT) :: t1,t2 ! hold the name and value strings
+    LOGICAL, INTENT(OUT) :: ok ! false if the parameter name is not recognized
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    INTEGER :: ierr
+    !CHARACTER(LEN=LINELEN) :: t
+
+    ! Initialize the ok and ierr variables:
+    ok = .TRUE.
+    ierr = 0
+
+    ! Any line starting with "#",'!','%' is a commented line that should be skipped:
+    t1 = ADJUSTL(t1)
+    IF (t1(1:1)=='#') RETURN
+    IF (t1(1:1)=='!') RETURN
+    IF (t1(1:1)=='%') RETURN
+
+    CALL string_convert_to_lowercase(t1)
+
+    ! Check for parameter name and extract parameter value:
+    IF (t1(1:11)=='input_path ') THEN
+       fwdinp%input_path = t2
+    ELSE IF (t1(1:16)=='input_modelling ') THEN
+       fwdinp%input_modelling = t2
+    ELSE IF (t1(1:11)=='input_mesh ') THEN
+       fwdinp%input_mesh = t2
+    ELSE IF (t1(1:11)=='input_csem ') THEN
+       fwdinp%input_CSEM = t2
+    ELSE IF (t1(1:9)=='input_mt ') THEN
+       fwdinp%input_MT = t2
+    ELSE IF (t1(1:17)=='input_em_generic ') THEN
+       fwdinp%input_EM_generic = t2
+    ELSE IF (t1(1:11)=='input_em1d ') THEN
+       fwdinp%input_EM1D = t2
+    ELSE
+       ok = .FALSE.
+    END IF
+
+    ! Check for error reading parameter value:
+    IF (ierr/=0) THEN
+       WRITE(t2,FMT='(A,A)') 'parameter ', TRIM(t1)
+       CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'fwd_read_parameter',t2)
+       !RETURN
+    END IF
+    RETURN
+    ! Error messaging code is below:
+!!$  CONTAINS
+!!$    SUBROUTINE error_80()
+!!$      IMPLICIT NONE
+!!$      CALL concatenate(error,t,'empty string for parameter ',TRIM(t1),trimflag_op=.FALSE.)
+!!$      IF (error_check(error)) THEN
+!!$         CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'fwd_read_parameter')
+!!$         RETURN
+!!$      END IF
+!!$      CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'fwd_read_parameter',t)
+!!$    END SUBROUTINE error_80
+  END SUBROUTINE Fwd_Read_Parameter
+
+
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE modelling_read_inputfile(modelling, inputfile, error)
+    USE error_cls
+    USE FORTRAN_fileio_mod, ONLY : fileio_exists
+    USE fileio_mod_Peter, ONLY: read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(modelling_para_type), INTENT(INOUT) :: modelling
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile',&
+            'failed to find input file: '//TRIM(inputfile))
+       RETURN
+    END IF
+
+    ! Clear modelling object:
+    CALL modelling_para_clear(modelling)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL modelling_read_parameter(modelling,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'modelling_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE modelling_read_inputfile
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE mesh_read_inputfile(mesh, inputfile, error)
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(mesh_para_type), INTENT(INOUT) :: mesh
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile','failed to find input file: '//TRIM(ADJUSTL(inputfile)))
+       RETURN
+    END IF
+
+    ! Clear mesh object:
+    CALL mesh_para_clear(mesh)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL mesh_read_parameter(mesh,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'mesh_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE mesh_read_inputfile
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE mesh_read_regionMark(mesh, error)
+    ! read values for the component mesh%regionMark
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(mesh_para_type), INTENT(INOUT) :: mesh
+    TYPE(error_type), INTENT(INOUT) :: error
+    !LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2, t
+    INTEGER :: nr
+
+    ! Check file exists:
+    ! check mesh parameter regionMarkFile
+    IF( LEN_TRIM(mesh%regionMarkFile) /= 0) THEN
+       IF(.NOT.fileio_exists(mesh%regionMarkFile)) THEN
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark',&
+               'failed to find input file: '//TRIM(ADJUSTL(mesh%regionMarkFile)))
+          RETURN
+       END IF
+    END IF
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark')
+       RETURN
+    END IF
+    CALL fileio_open_read(TRIM(ADJUSTL(mesh%regionMarkFile)),fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark')
+       RETURN
+    END IF
+
+    nr = 0
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       IF( TRIM(ADJUSTL(t1)) == 'L') THEN
+          READ(t2,FMT=*,IOSTAT=ierr) mesh%nregion
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark',t)
+             RETURN
+          END IF
+          ALLOCATE( mesh%regionMark(mesh%nregion) )
+       ELSE
+          IF(.NOT. ALLOCATED(mesh%regionMark) ) THEN
+             WRITE(t,FMT='(A,A)') 'the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark',t)
+             RETURN
+          END IF
+          nr = nr + 1
+          READ(t2,FMT=*,IOSTAT=ierr) mesh%regionMark(nr)
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'mesh_read_regionMark',t)
+             RETURN
+          END IF
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE Mesh_Read_RegionMark
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE EM_generic_read_inputfile(EM_generic, inputfile, error)
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(EM_generic_type), INTENT(INOUT) :: EM_generic
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile','failed to find input file')
+       RETURN
+    END IF
+
+    ! Clear modelling object:
+    CALL EM_generic_para_clear(EM_generic)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL EM_generic_read_parameter(EM_generic,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE EM_generic_read_inputfile
+  ! ---------------------------------------------------
+  SUBROUTINE EM_generic_read_frequency(EM_generic, error)
+    ! read values for the component EM_generic%many_freq
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(EM_generic_type), INTENT(INOUT) :: EM_generic
+    TYPE(error_type), INTENT(INOUT) :: error
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2, t
+    INTEGER :: nr
+
+    ! Check file exists:
+    ! check EM_generic parameter FreqListFile
+    IF( LEN_TRIM(EM_generic%FreqListFile) /= 0) THEN
+       IF(.NOT.fileio_exists(EM_generic%FreqListFile)) THEN
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency',&
+               'failed to find input file: '//TRIM(ADJUSTL(EM_generic%FreqListFile)))
+          RETURN
+       END IF
+    END IF
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency')
+       RETURN
+    END IF
+    CALL fileio_open_read(TRIM(ADJUSTL(EM_generic%FreqListFile)),fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency')
+       RETURN
+    END IF
+
+    nr = 0
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       IF( TRIM(ADJUSTL(t1)) == 'L') THEN
+          READ(t2,FMT=*,IOSTAT=ierr) EM_generic%nfreq
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency',t)
+             RETURN
+          END IF
+          ALLOCATE( EM_generic%many_freq(EM_generic%nfreq) )
+       ELSE
+          IF(.NOT. ALLOCATED(EM_generic%many_freq) ) THEN
+             WRITE(t,FMT='(A,A)') 'the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency',t)
+             RETURN
+          END IF
+          nr = nr + 1
+          READ(t2,FMT=*,IOSTAT=ierr) EM_generic%many_freq(nr)
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not a numeric value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_frequency',t)
+             RETURN
+          END IF
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE EM_Generic_Read_Frequency
+
+  ! ---------------------------------------------------
+  SUBROUTINE EM_generic_read_conductivity(EM_generic, error)
+    ! read values for the component EM_generic%cond
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(EM_generic_type), INTENT(INOUT) :: EM_generic
+    TYPE(error_type), INTENT(INOUT) :: error
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2, t
+    INTEGER :: nr
+
+    ! Check file exists:
+    ! check EM_generic parameter condRegionFile
+    IF( LEN_TRIM(EM_generic%condRegionFile) /= 0) THEN
+       IF(.NOT.fileio_exists(EM_generic%condRegionFile)) THEN
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity',&
+               'failed to find input file: '//TRIM(ADJUSTL(EM_generic%condRegionFile)))
+          RETURN
+       END IF
+    END IF
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity')
+       RETURN
+    END IF
+    CALL fileio_open_read(TRIM(ADJUSTL(EM_generic%condRegionFile)),fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity')
+       RETURN
+    END IF
+
+    nr = 0
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       IF( TRIM(ADJUSTL(t1)) == 'L') THEN
+          READ(t2,FMT=*,IOSTAT=ierr) EM_generic%ncond
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity',t)
+             RETURN
+          END IF
+          ALLOCATE( EM_generic%cond(EM_generic%ncond) )
+       ELSE
+          IF(.NOT. ALLOCATED(EM_generic%cond) ) THEN
+             WRITE(t,FMT='(A,A)') 'the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity',t)
+             RETURN
+          END IF
+          nr = nr + 1
+          READ(t2,FMT=*,IOSTAT=ierr) EM_generic%cond(nr)
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not a numeric value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'EM_generic_read_conductivity',t)
+             RETURN
+          END IF
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE EM_generic_read_conductivity
+
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE MT_read_inputfile(MT, inputfile, error)
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(MT_type), INTENT(INOUT) :: MT
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile','failed to find input file')
+       RETURN
+    END IF
+
+    ! Clear object:
+    CALL MT_clear(MT)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL MT_read_parameter(MT,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE MT_read_inputfile
+  ! ---------------------------------------------
+  SUBROUTINE MT_read_1D_cond(MT, error)
+    ! read values for the component MT%MT1D_cond
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(MT_type), INTENT(INOUT) :: MT
+    TYPE(error_type), INTENT(INOUT) :: error
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2, t
+    INTEGER :: nr
+
+    IF( TRIM(ADJUSTL(MT%MT_boundary_model)) == "HALF") RETURN
+    ! Check file exists:
+    ! check MT parameter MT1D_condFile
+    IF( LEN_TRIM(MT%MT1D_condFile) /= 0) THEN
+       IF(.NOT.fileio_exists(MT%MT1D_condFile)) THEN
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond',&
+               'failed to find input file: '//TRIM(ADJUSTL(MT%MT1D_condFile)))
+          RETURN
+       END IF
+    END IF
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond')
+       RETURN
+    END IF
+    CALL fileio_open_read(TRIM(ADJUSTL(MT%MT1D_condFile)),fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond')
+       RETURN
+    END IF
+
+    nr = 0
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       IF( TRIM(ADJUSTL(t1)) == 'L') THEN
+          READ(t2,FMT=*,IOSTAT=ierr) MT%nlayer
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond',t)
+             RETURN
+          END IF
+          ALLOCATE( MT%MT1D_cond(MT%nlayer) )
+       ELSE
+          IF(.NOT. ALLOCATED(MT%MT1D_cond) ) THEN
+             WRITE(t,FMT='(A,A)') 'the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond',t)
+             RETURN
+          END IF
+          nr = nr + 1
+          READ(t2,FMT=*,IOSTAT=ierr) MT%MT1D_cond(nr)
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not a numeric value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_cond',t)
+             RETURN
+          END IF
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE MT_read_1D_cond
+  ! ---------------------------------------------
+  SUBROUTINE MT_read_1D_absci(MT, error)
+    ! read values for the component MT%z_absci
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(MT_type), INTENT(INOUT) :: MT
+    TYPE(error_type), INTENT(INOUT) :: error
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2, t
+    INTEGER :: nr
+
+    IF( TRIM(ADJUSTL(MT%MT_boundary_model)) == "HALF") RETURN
+    ! Check file exists:
+    ! check MT parameter MT1D_condFile
+    IF( LEN_TRIM(MT%MT1D_absciFile) /= 0) THEN
+       IF(.NOT.fileio_exists(MT%MT1D_absciFile)) THEN
+          CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci',&
+               'failed to find input file: '//TRIM(ADJUSTL(MT%MT1D_absciFile)))
+          RETURN
+       END IF
+    END IF
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci')
+       RETURN
+    END IF
+    CALL fileio_open_read(TRIM(ADJUSTL(MT%MT1D_absciFile)),fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci')
+       RETURN
+    END IF
+
+    nr = 0
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       IF( TRIM(ADJUSTL(t1)) == 'L') THEN
+          READ(t2,FMT=*,IOSTAT=ierr) MT%nlayer
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not an integer value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci',t)
+             RETURN
+          END IF
+          ALLOCATE( MT%z_absci(MT%nlayer) )
+       ELSE
+          IF(.NOT. ALLOCATED(MT%z_absci) ) THEN
+             WRITE(t,FMT='(A,A)') 'the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci',t)
+             RETURN
+          END IF
+          nr = nr + 1
+          READ(t2,FMT=*,IOSTAT=ierr) MT%z_absci(nr)
+          IF (ierr/=0) THEN
+             WRITE(t,FMT='(A,A,A,A)') ':Parameter ', TRIM(t2), ' is not a numeric value in the line record: ', TRIM(t1)//'   '//TRIM(t2)
+             CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'MT_read_1D_absci',t)
+             RETURN
+          END IF
+       END IF
+    END DO
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE MT_read_1D_absci
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE CSEM_read_inputfile(CSEM, inputfile, error)
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(CSEM_type), INTENT(INOUT) :: CSEM
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile','failed to find input file')
+       RETURN
+    END IF
+
+    ! Clear object:
+    CALL CSEM_clear(CSEM)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL CSEM_read_parameter(CSEM,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'CSEM_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+    RETURN
+  end SUBROUTINE CSEM_read_inputfile
+
+  ! ---------------------------------------------
+  ! ---------------------------------------------
+
+  SUBROUTINE fwd_read_inputfile(fwdinp, inputfile, error)
+    ! read the overall inputfile passed to the modelling program. This file is a 'pointer'.
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, read_input_line, fileio_open_read, fileio_get_fid
+    IMPLICIT NONE
+    TYPE(fwdinp_type), INTENT(INOUT) :: fwdinp
+    CHARACTER(LEN=*), INTENT(IN) :: inputfile
+    TYPE(error_type), INTENT(INOUT) :: error
+    LOGICAL :: ok
+    INTEGER :: fid,ierr
+    CHARACTER(LEN=wordlen) :: t1,t2
+
+    ! Check file exists:
+    IF(.NOT.fileio_exists(inputfile)) THEN
+       CALL error_construct(error,ERROR_GENERAL,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile','failed to find input file: <'//TRIM(ADJUSTL(inputfile))//'>')
+       RETURN
+    END IF
+
+    ! Clear object:
+    CALL fwd_clear(fwdinp)
+
+    ! Open file for reading:
+    CALL fileio_get_fid(fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile')
+       RETURN
+    END IF
+    CALL fileio_open_read(inputfile,fid,error)
+    IF (error_check(error)) THEN
+       CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile')
+       RETURN
+    END IF
+
+    ! Loop over each line in the file:
+    DO
+       ! Read line from file:
+       CALL read_input_line(fid,t1,t2,ierr,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile')
+          RETURN
+       END IF
+       IF (ierr<0) EXIT ! reached end of file
+       IF (ierr>0) CYCLE ! commented or empty line
+       ! Deal with current line:
+       CALL fwd_read_parameter(fwdinp,t1,t2,ok,error)
+       IF (error_check(error)) THEN
+          CALL error_pass(error,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile')
+          RETURN
+       END IF
+       IF (.NOT.ok) THEN
+          WRITE(t2,FMT='(A,A)') 'unknown parameter name: ', TRIM(t1)
+          CALL error_construct(error,ERROR_READ,TRIM(ADJUSTL(thisModule)),'fwd_read_inputfile',t2)
+          RETURN
+       END IF
+    END DO
+    ! Close input file:
+    CLOSE(UNIT=fid)
+
+    ! check fwd input file path information
+    IF( TRIM(ADJUSTL(fwdinp%input_path)) /= '') THEN
+       fwdinp%input_modelling = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_modelling))
+       fwdinp%input_mesh = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_mesh))
+       fwdinp%input_EM_generic = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_EM_generic))
+       fwdinp%input_CSEM = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_CSEM))
+       fwdinp%input_MT = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_MT))
+       fwdinp%input_EM1D = TRIM(ADJUSTL(fwdinp%input_path))//TRIM(ADJUSTL(fwdinp%input_EM1D))
+    END IF
+    RETURN
+  end SUBROUTINE Fwd_Read_Inputfile
+
+
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+  SUBROUTINE set_angular_freq()
+    USE constants_module, ONLY: pi
+    IMPLICIT NONE
+    EM_generic%omega = 2 * pi * EM_generic%freq
+    RETURN
+  end SUBROUTINE set_angular_freq
+  ! ----------------------------------------
+  SUBROUTINE reset_frequency( freq_new )
+    IMPLICIT NONE
+    REAL(DPR), INTENT(IN) :: freq_new
+    EM_generic%freq = freq_new
+    CALL set_angular_freq()
+    RETURN
+  end SUBROUTINE reset_frequency
+  ! ----------------------------------------
+  SUBROUTINE reset_discretization_mode( disc )
+    ! useful for mixed numerical discretization cases
+    IMPLICIT NONE
+    CHARACTER(LEN=*), INTENT(IN) :: disc
+    modelling%DiscretMode = disc
+    RETURN
+  end SUBROUTINE reset_discretization_mode
+  ! ----------------------------------------
+  SUBROUTINE set_shape_parameter(new_shape_val)
+    IMPLICIT NONE
+    REAL(DPR), INTENT(IN) :: new_shape_val
+    modelling%shape_value = new_shape_val
+  end SUBROUTINE set_shape_parameter
+  ! ----------------------------------------
+  ! ----------------------------------------
+  SUBROUTINE set_nodes_per_domain(nnode)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: nnode
+    modelling%nodes_per_domain = nnode
+    modelling%npostTest = nnode
+  end SUBROUTINE set_nodes_per_domain
+  ! ----------------------------------------
+  ! ----------------------------------------
+
+  SUBROUTINE set_polyfile( filename )
+    IMPLICIT NONE
+    CHARACTER(LEN=*), INTENT(IN) :: filename
+    IF(LEN_TRIM(filename) > LEN(mesh_par%basefilename) ) THEN
+       PRINT*, '--Warning: new filename will be truncated !'
+    END IF
+    mesh_par%basefilename = filename
+    RETURN
+  end SUBROUTINE set_polyfile
+  ! ----------------------------------------
+  ! ----------------------------------------
+  SUBROUTINE reset_PHS_scale_switcher( logic_input )
+    IMPLICIT NONE
+    LOGICAL, INTENT(IN) :: logic_input
+    modelling%PHS_scale = logic_input
+    RETURN
+  end SUBROUTINE reset_PHS_scale_switcher
+  ! ----------------------------------------
+  ! ----------------------------------------
+  SUBROUTINE reset_EM_multi_freq_file_path( string_input )
+    ! setup subfolders for multi-freq destinations
+    IMPLICIT NONE
+    CHARACTER(LEN=*), INTENT(IN) :: string_input
+    modelling%outputfilepath = TRIM(ADJUSTL(modelling%reference_path))//TRIM(string_input)
+    RETURN
+  end SUBROUTINE Reset_EM_multi_freq_File_Path
+  ! ----------------------------------------
+  ! ----------------------------------------
+  SUBROUTINE reset_output_directory( string_input )
+    ! reset the main output destination
+    IMPLICIT NONE
+    CHARACTER(LEN=*), INTENT(IN) :: string_input
+    CHARACTER(LEN=500) :: msg
+    INTEGER :: ierr
+    modelling%reference_path = TRIM(ADJUSTL(modelling%reference_path))//TRIM(ADJUSTL(string_input))//'/'
+    ! create the directory on disk if not exist
+    CALL EXECUTE_COMMAND_LINE( COMMAND='mkdir -p '//TRIM(ADJUSTL(modelling%reference_path)), CMDSTAT=ierr, CMDMSG=msg )
+    IF( ierr /= 0) THEN
+       PRINT*, ''; PRINT*,'In <reset_output_directory>'
+       PRINT*, "Error in creating the directory <"//TRIM(ADJUSTL(modelling%reference_path))//">. More info : ", TRIM(ADJUSTL(msg))
+       STOP
+    ENDIF
+    RETURN
+  end SUBROUTINE reset_output_directory
+  ! ----------------------------------------
+  ! ----------------------------------------
+  SUBROUTINE renew_present_freqDependent_output_path( FreqFlag )
+    ! for outputs when multi-frequency
+    IMPLICIT NONE
+    INTEGER,INTENT(IN) :: FreqFlag
+    CHARACTER(LEN=3) :: FreqMark
+    ! Multiple frequency results output to multiple directories
+    IF( EM_generic%nfreq >= 1 ) THEN
+       IF( FreqFlag <= 999 .AND. FreqFlag > 0 ) THEN
+          WRITE(FreqMark, '(I3.3)') FreqFlag
+       ELSE
+          PRINT*, 'In <renew_present_freqDependent_output_path>'
+          PRINT*, 'Warning: The provided frequency flag integer is too big (>=1000) ...'
+          PRINT*, 'File/directory names may not be correct !'
+       END IF
+       ! add a backward slash at the end
+       CALL reset_EM_multi_freq_file_path( FreqMark//'/' )
+    END IF
+    RETURN
+  END SUBROUTINE renew_present_freqDependent_output_path
+  ! ----------------------------------------
+  SUBROUTINE setup_multi_freq_directories()
+    IMPLICIT NONE
+    ! set up working directories for each frequency during run time in a Linux environment for multiple frequency scenarios
+    ! The numbering of directory names is between 001-999 at the moment
+    INTEGER :: i
+    CHARACTER(LEN=3) :: dir_name
+    CHARACTER(LEN=500) :: cmdmsg
+    INTEGER :: cmdstat
+    IF( EM_generic%nfreq >= 1 .AND. EM_generic%nfreq <= 999 ) THEN
+       ! create all necessary subfolders
+       DO i = 1, EM_generic%nfreq
+          WRITE( dir_name, '(I3.3)')  i
+          CALL EXECUTE_COMMAND_LINE( COMMAND='mkdir -p '//TRIM(ADJUSTL(modelling%reference_path))//TRIM(dir_name), CMDSTAT=cmdstat, CMDMSG=cmdmsg)
+          IF( cmdstat /= 0) THEN
+             PRINT*, ''; PRINT*,'In <setup_multi_freq_directories>'
+             PRINT*, 'Error in creating the ',i,'-th directory. Error message (if cmdstat>1) is : ', TRIM(ADJUSTL(cmdmsg))
+             STOP
+          ENDIF
+       END DO
+    end IF
+    RETURN
+  end SUBROUTINE setup_multi_freq_directories
+  ! ----------------------------------------
+!!$  SUBROUTINE set_EM_working_frequencies()
+!!$    ! obsolete 
+!!$    IMPLICIT NONE
+!!$    ! set up EM frequencies
+!!$    INTEGER :: i
+!!$    REAL(DPR) :: DTM1_freq(21), T3D2A_freq(3), T3D1A_freq(2)
+!!$    REAL(DPR) :: HED_half_freq(5), HED200m_half_freq(5)
+!!$
+!!$    ! set up the frequencies
+!!$    ! Period (in second) list for DTM1
+!!$    DTM1_freq = [1.d-1, 1.8d-1, 3.2d-1, 5.6d-1,  1.d-0, 1.8d-0, 3.2d-0, 5.6d-0, &
+!!$         1.d+1, 1.8d+1, 3.2d+1, 5.6d+1,  1.d+2, 1.8d+2, 3.2d+2, 5.6d+2, &
+!!$         1.d+3, 1.8d+3, 3.2d+3, 5.6d+3,  1.d+4  ]
+!!$    DTM1_freq = 1.0 / DTM1_freq
+!!$
+!!$    ! freq list for MT COMMEMI 3D2A model
+!!$    T3D2A_freq = [0.1d0, 0.01d0, 0.001d0]
+!!$
+!!$    ! freq list for MT 3D1A model
+!!$    T3D1A_freq = [0.1d0, 10.d0 ]
+!!$
+!!$    ! FOR CSEM HED (dipole) half space
+!!$    !HED_half_freq = [0.1d0, 1.d-2, 1.d-3, 1.d-4, 1.d-8]
+!!$    HED_half_freq = [3.d0, 3.d-1, 3.d-2, 1.d-4, 1.d-8]
+!!$
+!!$    ! FOR CSEM HE wire half space
+!!$    HED200m_half_freq = [1.d+2, 1.d0, 1.d-1, 1.d-4, 1.d-8]       
+!!$
+!!$    ! there should be no space between options within a CASE()
+!!$    req: DO i = 1, EM_generic%nfreq
+!!$       IF( EM_generic%nfreq == 1 ) THEN
+!!$          EM_generic%many_freq(1) = EM_generic%freq
+!!$          EXIT req
+!!$       end IF
+!!$       SELECT CASE( TRIM(ADJUSTL(EM_generic%ModelCode)) )
+!!$       CASE( "DTM1_MT")
+!!$          EM_generic%many_freq(i) = DTM1_freq(i)
+!!$       CASE( "3D1A_MT")
+!!$          EM_generic%many_freq(i) = T3D1A_freq(i)
+!!$       CASE("3D2A_MT")
+!!$          EM_generic%many_freq(i) = T3D2A_freq(i)
+!!$
+!!$       CASE("half_CSEM","block_half_CSEM")
+!!$          EM_generic%many_freq(i) = HED_half_freq(i)
+!!$       CASE("HED200_half_CSEM","WholeSpace_CSEM","HyDisk_CSEM")
+!!$          EM_generic%many_freq(i) = HED200m_half_freq(i)
+!!$
+!!$       CASE DEFAULT
+!!$          ! all other single-frequency cases
+!!$          print*,''; print*, 'Detected as the single-frequency case !!'
+!!$          EM_generic%many_freq(i) = EM_generic%freq
+!!$          EXIT req
+!!$       END SELECT
+!!$    end DO req
+!!$    print*,''; print*, 'Total number of frequencies: ', EM_generic%nfreq
+!!$    print*, 'f(requency,Hz)= ', EM_generic%many_freq;  print*, 'T(period,sec) = ', 1.0 / EM_generic%many_freq
+!!$    RETURN
+!!$  end SUBROUTINE set_EM_working_frequencies
+
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+  !-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!-----!
+
+
+  SUBROUTINE get_EM_fwd_parameter(inputfile)
+    USE error_cls
+    IMPLICIT NONE
+
+    TYPE(fwdinp_type) :: fwdinp
+    TYPE(error_type) :: error
+    CHARACTER(LEN=*),INTENT(IN) :: inputfile
+
+    CALL modelling_para_clear(modelling)
+    CALL mesh_para_clear(mesh_par)
+    CALL EM_generic_para_clear(EM_generic)
+    CALL CSEM_clear(CSEM)
+    CALL MT_clear(MT)
+    CALL EM1D_clear(EM1D)
+
+    ! read the only input file (which points to all other files) for FWD program
+    CALL fwd_read_inputfile(fwdinp, inputfile, error)
+    IF (error_check(error)) CALL error_report(error)
+
+    ! read modelling parameters
+    CALL modelling_read_inputfile(modelling, TRIM(ADJUSTL(fwdinp%input_modelling)), error)
+    IF (error_check(error)) CALL error_report(error)
+
+    ! read mesh parameters
+    CALL mesh_read_inputfile(mesh_par, TRIM(ADJUSTL(fwdinp%input_mesh)), error)
+    IF (error_check(error)) CALL error_report(error)
+    CALL mesh_read_regionMark(mesh_par, error)
+    IF (error_check(error)) CALL error_report(error)
+
+    ! read EM parameters
+    IF(TRIM(ADJUSTL(modelling%DataType)) == 'EM') THEN
+       CALL EM_generic_read_inputfile(EM_generic, TRIM(ADJUSTL(fwdinp%input_EM_generic)), error)
+       IF (error_check(error)) CALL error_report(error)
+       CALL EM_generic_read_frequency(EM_generic, error)
+       IF(error_check(error)) CALL error_report(error)
+       CALL EM_generic_read_conductivity(EM_generic, error)
+       IF(error_check(error)) CALL error_report(error)
+
+       IF( TRIM(ADJUSTL(EM_generic%EMsurveyType)) == 'MT') THEN
+          CALL MT_read_inputfile(MT, TRIM(ADJUSTL(fwdinp%input_MT)), error)
+          IF(error_check(error)) CALL error_report(error)
+          CALL MT_read_1D_absci(MT, error); IF(error_check(error)) CALL error_report(error)
+          CALL MT_read_1D_cond(MT, error); IF(error_check(error)) CALL error_report(error)
+       ELSE IF( TRIM(ADJUSTL(EM_generic%EMsurveyType)) == 'CSEM') THEN
+          CALL CSEM_read_inputfile(CSEM, TRIM(ADJUSTL(fwdinp%input_CSEM)), error)
+          IF (error_check(error)) CALL error_report(error)
+       end IF
+
+    END IF
+
+    ! ----- print specs information of modelling to screen ------
+    SELECT CASE(TRIM(ADJUSTL(modelling%DiscretMode)))
+    CASE('ANA')
+       PRINT*,'*******************    Only analytical EM fields     ***************'
+    CASE('MESHFREE')
+       PRINT*,'****************   Meshfree method  *******************'
+    CASE('FE')
+       PRINT*,'****************   Finite element method **************'
+    CASE DEFAULT
+       PRINT*, 'Inconsistent numerical method type input seems to be the case ....'
+       PRINT*, 'The provided numerical method was = ', TRIM(ADJUSTL(modelling%DiscretMode))
+       PRINT*, 'Program terminated by <STOP> !'; STOP       
+    end SELECT
+    PRINT*,''
+    PRINT*,'--------  settings of Numerical and physical parameters  ----------------'
+    PRINT*, '====> Modelling parameters: '
+    CALL modelling_para_print(modelling); PRINT*
+    PRINT*, '====> Mesh parameters: '
+    CALL mesh_para_print(mesh_par); PRINT*
+
+    IF( TRIM(ADJUSTL(modelling%DataType)) == 'EM' ) THEN
+       PRINT*, '====> EM_generic parameters: '
+       CALL EM_generic_para_print(EM_generic); PRINT*
+    END IF
+    IF( TRIM(ADJUSTL(EM_generic%EMsurveyType)) == 'MT' ) THEN
+       PRINT*, '====> MT parameters: '
+       CALL MT_print(MT); PRINT*
+    END IF
+    IF( TRIM(ADJUSTL(EM_generic%EMsurveyType)) == 'CSEM' ) THEN
+       PRINT*, '====> CSEM parameters: '
+       CALL CSEM_print(CSEM); PRINT*
+    END IF
+    PRINT*,'-------------------------------------------------------------------------'
+    RETURN
+  end SUBROUTINE get_EM_fwd_parameter
+
+
+end MODULE modelling_parameter
