@@ -9,7 +9,7 @@ version: 2
 # sphinx.builder options: html (default), dirhtml, singlehtml
 sphinx:
    builder: html
-   configuration: docs/conf.py
+   configuration: /docs/conf.py
 
 # Optionally build your docs in additional formats such as PDF; options: htmlzip, pdf, epub, all (build all formats)
 formats:
@@ -20,8 +20,8 @@ formats:
 python:
    version: 3.7
    install:
-   - requirements: docs/requirements.txt
+   - requirements: /docs/requirements.txt
 
 # Configuration for Conda support
 conda:
-  environment: docs/environment.yml
+  environment: /docs/environment.yml
