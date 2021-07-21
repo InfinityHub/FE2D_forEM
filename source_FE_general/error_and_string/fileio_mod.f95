@@ -1,7 +1,8 @@
 ! file I/O
 MODULE fileio_mod_peter
 ! Contains various file input and output subroutines for general use.
-   
+! Built on a previous version of Peter Lelievre
+! Jianbo Long
    USE error_cls
    
    IMPLICIT NONE
