@@ -44,8 +44,13 @@ To run the code, follow these steps:
 
 .. _label-section-compile:
 
-Compilation (coming up)
------------------------
+Compilation
+-------------
+
+To compile the FORTRAN code, use the **makefile** provided in the source files. The compilation has been mostly tested on Linux like systems. Nevertheless, the process is the same for other operating systems. The Makefile is likely to be modified so that the paths to all source code files and libraries are correctly set on a local machine. Before compiling, make sure the following tools are installed:
+
+   #. FORTRAN compiler: ``gfortran`` and ``ifort`` are good options.
+   #. MUMPS solver: this is a direct solver for matrix equations (also see :ref:`label-modelling-parameter`). For download and installation of MUMPS, please see its _`manual here <http://mumps.enseeiht.fr/>`_. Typically, 
 
 
 .. _label-mesh-generation:
@@ -84,6 +89,9 @@ This special file in the above example has five string parameters (i.e., paramet
 
 All paths and file names should be double or single quoted.
 
+
+.. _label-modelling-parameter:
+
 ``modelling_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -92,6 +100,7 @@ An example template of the file is:
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
 For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used.
+
 
 ``EM_generic_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
