@@ -53,7 +53,9 @@ Compilation (coming up)
 Mesh generation
 ---------------
 
-The required mesh files for the code are .node, .ele, .edge and .neigh files generated from `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_. The file names and their locations are defined in :ref:`label-mesh-parameter`. For the requirements of the FORTRAN code, each region of the problem domain needs to be assigned an integer marker when generating the mesh files; this is typically done in a .poly file that is required for generating the mesh. For details of regional marker requirements in this code, see :ref:`label-mesh-parameter`.
+The required mesh files for the code are .node, .ele, .edge and .neigh files generated from `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_. The file names and their locations are defined in :ref:`label-mesh-parameter`. For the requirements of the FORTRAN code, each region of the problem domain needs to be assigned an integer marker when generating the mesh files; this is typically done in a .poly file that is required for generating the mesh. The main purpose of using regional markers is to allow modellings over complex domains where the physical or material property is heterogeneous across the whole computational domain.
+
+Generated mesh files, along with regional marker information, are provided as inputs to the modelling code. For details of regional marker requirements in this code, see :ref:`label-mesh-parameter`.
 
 
 .. _label-input-files:
@@ -112,8 +114,8 @@ An example template is:
    .. literalinclude:: /MT2D_3layer (example 1)/mesh_parameter.in
 
 The definitions of the above parameters are:
-   * ``nregion``: integer parameter; number of homogeneous regions of conductivity in the mesh.
-   * ``regionMarkFile``: the file name of lists of regional markers in the mesh. Each homogenous region is assigned an integer marker in order to distinguish itself from other regions. The order of listing the markers can be specified by the user when generating the mesh. See :ref:`label-marker-file` for an example of this file.
+   * ``nregion``: integer parameter; number of homogeneous regions of conductivity (or material property) in the mesh.
+   * ``regionMarkFile``: the file name of list of regional markers in the mesh. Each homogenous region is assigned an integer marker value in order to distinguish itself from other regions. The order of listing the marker values can be specified by the user when generating the mesh. See :ref:`label-marker-file` for an example of this file.
    * ``meshfilepath``: string parameter; the path of all mesh files (see :ref:`label-mesh-generation`).
    * ``basefilename`` string parameter; the "base" part of the file names of mesh files. By default, all mesh files generated using the above-mentioned external program should share this part in their names. For example, if the node file is named "foo.node", then ``basefilename`` should be "foo". 
 
@@ -127,7 +129,7 @@ An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/list_regional_cond.txt
    
-In this file, the conductivities (i.e., material properties, unit: S/m) of different uniform regions are defined. The first line must begin with "L", which is followed by the number of actual regions in the mesh/problem domain. In this example, there are 3 regions in the mesh. Subsequent lines list the conductivity of each region. The order of this list must be the same order that is used to define different regions (see :ref:`label-mesh-parameter`) during meshing.
+In this file, the conductivities (i.e., material properties, unit: S/m) of different uniform regions are defined. The first non-comment line must begin with "L", which is followed by the number of actual regions in the mesh/problem domain. In this example, there are 3 regions in the mesh. Subsequent lines list the conductivity of each region. The order of this list must be the same order that is used to define different regions (see :ref:`label-mesh-parameter`) during meshing.
 
 
 
@@ -139,7 +141,8 @@ In this file, the conductivities (i.e., material properties, unit: S/m) of diffe
 An example template is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/list_regionMark.txt
-   
+
+The meanings of the parameters here follow exactly the same as those in :ref:`label-cond-file`, except here the information is the assigned markers (integer values) for each region. These integer values should be distinct from each other and should be exactly the same integer markers used when generating the mesh (see :ref:`label-mesh-generation`).
    
 Output files (coming up)
 ------------------------
