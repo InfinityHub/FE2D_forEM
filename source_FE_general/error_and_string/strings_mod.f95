@@ -1,7 +1,8 @@
 ! file I/O
 MODULE strings_mod
 ! Contains various subroutines for working with strings.
-   
+! Built on a previous version of Peter Lelievre
+! Jianbo Long
    USE error_cls
    
    IMPLICIT NONE
