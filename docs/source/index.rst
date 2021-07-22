@@ -50,7 +50,7 @@ Compilation
 To compile the FORTRAN code, use the **makefile** provided in the source files. The compilation has been mostly tested on Linux like systems. Nevertheless, the process is the same for other operating systems. The Makefile is likely to be modified so that the paths to all source code files and libraries are correctly set on a local machine. Before compiling, make sure the following tools are installed:
 
    #. FORTRAN compiler: ``gfortran`` and ``ifort`` are good options.
-   #. MUMPS solver: this is a direct solver for matrix equations (also see :ref:`label-modelling-parameter`). For download and installation of MUMPS, please see its _`manual here <http://mumps.enseeiht.fr/>`_. Typically, 
+   #. MUMPS solver: this is a direct solver for matrix equations (also see :ref:`label-modelling-parameter`). For download and installation of MUMPS, please see its `manual here <http://mumps.enseeiht.fr/>`_. Typically, its dependencies, such as `BLAS <http://www.netlib.org/>`_, `LAPACK <http://www.netlib.org/lapack/index.html>`_ and `SCOTCH <https://www.labri.fr/perso/pelegrin/scotch/>`_, need to be installed first. The installation guide of MUMPS is an excellent reference for all details of installing. Once MUMPS is installed, modify the makefile to make sure the compiler can find all these libraries.
 
 
 .. _label-mesh-generation:
