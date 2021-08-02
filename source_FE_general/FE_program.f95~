@@ -1,0 +1,272 @@
+MODULE EMfwd_module
+  !
+  !---ElectroMagnetic forward modelling
+  !   Jianbo Long
+  !
+  ! Note: the difference between intrinsic function CMPLX and GNU extension function
+  !       COMPLEX is that COMPLEX retains the real precision.
+  IMPLICIT NONE
+
+  PUBLIC :: start_EM_modelling
+
+  PRIVATE
+
+CONTAINS 
+
+  SUBROUTINE start_EM_modelling()
+    ! -- Mar,2018: re-organize the code
+    ! -- July, 2018: re-organize the code, taking multiple frequency modelling into consideration
+    ! -- Sep, 2018: integrate the situations of MT and CSEM into a single subroutine frame 
+    ! -- Dec, 2018: integrate different numerical methods (currently scalar meshfree and scalar linear FE)
+    ! -- Jan,2020: Delete unnecessary components of the code.
+    ! -- Mar,2020: standardize the modelling procedure.
+    USE modelling_parameter, ONLY: modelling, EM_generic, CSEM, reset_frequency, &
+         setup_multi_freq_directories, renew_present_freqDependent_output_path
+    USE EM_data_measurements, ONLY: get_synthetic_measurement_positions
+    USE EM_1D_computation, ONLY: get_analytical_1D_EMfield_at_measurements, &
+         print_analytical_measurement_EMfield
+    USE mesh_concatenate_module, ONLY: mesh_concatenate
+    USE num_algorithm_concatenate_differ_operator, ONLY: differ_operator_algorithm_concatenate
+    USE linear_system_equation_data, ONLY: assemble_LinearSystem_concatenate,&
+         solve_the_linear_system
+
+    USE EM_RHS_concatenate_module, ONLY: EM_RHS_concatenate
+    USE EM_data_postprocess, ONLY: data_processing_EM
+
+    USE FORTRAN_generic,ONLY: print_general_msg, print_debug_msg, standard_print_date_and_time
+    IMPLICIT NONE
+
+    INTEGER :: i
+    !CHARACTER(LEN=200)  ::  output_dir
+    !CHARACTER(LEN=300) :: subroutineTitle = "start_EM_modelling"
+
+    ASSOCIATE( DiscretMode=>modelling%DiscretMode, EMsurveyType=>EM_generic%EMsurveyType, &
+         freq=>EM_generic%freq, nfreq=>EM_generic%nfreq, &
+         CSEM_PS_SWITCH=>CSEM%CSEM_PS_SWITCH )
+
+    CALL EM_invoke()
+
+    CALL setup_multi_freq_directories()
+
+    CALL standard_print_date_and_time('time information the first occurrance')
+
+    ! check if there are synthetic measurements for post processing (output files)
+    CALL get_synthetic_measurement_positions()
+
+    ! Now, begin the numerical (or analytical) solution
+    IF(TRIM(ADJUSTL(DiscretMode)) == 'ANA') THEN
+       ! calculate and print analytical CSEM EM fields
+       DO i = 1, nfreq
+          CALL reset_frequency( EM_generic%many_freq(i) )
+          CALL print_debug_msg('Current frequency', freq)
+          CALL renew_present_freqDependent_output_path( i )
+          CALL get_analytical_1D_EMfield_at_measurements( )
+          CALL print_analytical_measurement_EMfield()
+       END DO
+       RETURN
+    END IF
+
+    CALL print_general_msg('setting up meshes or meshfree points')
+    CALL mesh_concatenate()
+
+    ! Now begin generating linear system, physical properties are used here.
+    ! First, (spacially) approximate differential operators over the mesh.
+    CALL differ_operator_algorithm_concatenate()
+
+    IF( (CSEM_PS_SWITCH .EQV. .FALSE.) .AND. TRIM(ADJUSTL(EMsurveyType)) == 'CSEM') THEN
+       CALL EM_RHS_concatenate() ! in case of total-field CSEM
+    END IF
+
+    Fre: DO i = 1, nfreq
+       CALL reset_frequency( EM_generic%many_freq(i) )
+       ! set up the sub-directory for writing files for multi-freq case
+       CALL renew_present_freqDependent_output_path( i )
+       CALL print_debug_msg('Current frequency', freq)
+       CALL assemble_LinearSystem_concatenate()          
+
+       IF( (CSEM_PS_SWITCH .EQV. .TRUE.) .OR. TRIM(ADJUSTL(EMsurveyType)) /= 'CSEM') THEN
+          CALL EM_RHS_concatenate() ! MT and all other cases
+       END IF
+       CALL standard_print_date_and_time('time information BEFORE solving the system')
+
+       CALL print_general_msg('Solving linear system')
+       CALL solve_the_linear_system()  ! update EM_solution
+
+       CALL standard_print_date_and_time('time information AFTER solving the system')
+       
+       CALL print_general_msg('Post processing')
+
+       CALL data_processing_EM( i )
+       CALL standard_print_date_and_time('time information AFTER the post processing')
+       PRINT*,'------------------------------------------------------------------------'
+       PRINT*,'------------------------------------------------------------------------'
+    END DO Fre
+    END ASSOCIATE
+    RETURN
+  end SUBROUTINE start_EM_modelling
+
+
+  SUBROUTINE EM_invoke()
+    ! process inputs for the program, print usage messages.
+    USE modelling_parameter, ONLY: reset_output_directory, get_EM_fwd_parameter
+    IMPLICIT NONE
+    INTEGER :: narg, k, arglen, ierr
+    CHARACTER(LEN=256) :: arg, t, inputfile, outDirectory
+    !CHARACTER(LEN=*) :: t
+
+    inputfile = ''
+    outDirectory = ''
+    ! get inputs ( mesh files, EM models, etc) when invoking program
+    narg = COMMAND_ARGUMENT_COUNT()
+    IF( narg <= 0) THEN
+       CALL print_author_info()
+       CALL print_usage_info()
+       STOP
+    end IF
+
+    IF( narg > 0 ) THEN
+       DO k = 1, narg
+          CALL GET_COMMAND_ARGUMENT(NUMBER=k, VALUE=arg, LENGTH=arglen, STATUS=ierr)  ! get 1st argument
+          IF( ierr > 0) THEN
+             PRINT*, 'Error: the argument cannot be retrieved: ', TRIM(arg); STOP
+          ELSEIF ( ierr == -1 ) THEN
+             PRINT*, 'Error: the argument <', TRIM(ADJUSTL(arg)),'> has exceeded the maximum allowance in length (256 characters)!';STOP
+          end IF
+
+          t = ADJUSTL(arg)   ! remove leading blanks
+
+          IF( t(1:1) == '-' .AND. arglen > 2 ) THEN
+             SELECT CASE( t(2:2) )
+             CASE('i')
+                ! input file
+                inputfile = TRIM( t(3: arglen) )
+             CASE('o')
+                ! provide a sub-directory for outputs
+                outDirectory = TRIM( t(3: arglen) )
+             CASE DEFAULT
+                PRINT*,'Error: invalid argument flag(s) !'
+                PRINT*, TRIM(t)
+                CALL print_usage_info();STOP
+             END SELECT
+          ELSE
+             PRINT*,'Error: invalid argument !'
+             PRINT*, t
+             CALL print_usage_info();STOP
+          END IF
+
+       END DO
+    END IF
+
+    IF(LEN_TRIM(inputfile) == 0) THEN
+       PRINT*,'Error: missing the input file ! Please select an input file.'
+       CALL print_usage_info();STOP
+    END IF
+    CALL get_EM_fwd_parameter(inputfile)
+    IF(LEN_TRIM(outDirectory) /= 0) CALL reset_output_directory( outDirectory )
+
+    RETURN
+  CONTAINS
+    SUBROUTINE print_author_info()
+      IMPLICIT NONE
+      PRINT*,'EM ForWarD modelling, compute geophysical EM synthetic data.'
+      PRINT*,'          Jianbo Long, Dept of Earth Sciences, MUN.'
+      PRINT*,'----------------------------------------------------------------------'
+      RETURN
+    end SUBROUTINE print_author_info
+
+    SUBROUTINE print_usage_info()
+      IMPLICIT NONE
+      PRINT*,''
+      PRINT*,'Usage: EMFWD -i<arg> [-o<arg>]'
+      PRINT*,''
+      PRINT*,'     -i  Select an input file that provides the paths and names of all necessary parameter files, which in turn include '
+      PRINT*,'         all set-up parameters (model, numerical method, data output, etc) for the forward modelling. If the file '
+      PRINT*,'         is elsewhere, a relative or absolute path can be included.'
+      PRINT*,'     -o  Specify a NAME (not a path) of additional sub-directory for writing all output files from the modelling. '
+      PRINT*,'         If not supplied, the default output directory/path, which is set in the parameter files, will be used. If the '
+      PRINT*,'         supplied sub-directory does not exist, it will be created.'
+      RETURN
+    end SUBROUTINE print_usage_info
+
+
+  end SUBROUTINE EM_invoke
+  
+  ! -------------------------------------------------------
+  ! -------------------------------------------------------
+ 
+
+!!$  SUBROUTINE testing_write_FE_boundary_values(freqFlag)
+!!$    USE model_setup_EM, ONLY: nodes, DiscretMode
+!!$    USE FORTRAN_generic, ONLY: whether_two_integer_arrays_identical
+!!$    IMPLICIT NONE
+!!$
+!!$    INTEGER  :: k, freqFlag, nc, nsize
+!!$    INTEGER  :: buds(2) = (/10, 20/)
+!!$    CHARACTER(LEN=3) :: cf
+!!$    LOGICAL :: SameArray
+!!$
+!!$    IF( TRIM(ADJUSTL(DiscretMode)) == 'FE' ) THEN
+!!$       WRITE(cf, '(I3.3)')   freqFlag
+!!$       OPEN(20, FILE="Testing_FE_boundary_values_"//TRIM(ADJUSTL(cf))//".txt")
+!!$
+!!$       nc = 0
+!!$
+!!$       DO k = 1, SIZE(nodes)
+!!$          nsize = SIZE( nodes(k)%reg )
+!!$          IF( nsize == 2 ) THEN
+!!$
+!!$             SameArray = whether_two_integer_arrays_identical( buds, nodes(k)%reg )
+!!$             IF( SameArray .EQV. .TRUE. )  THEN
+!!$                nc = nc + 1
+!!$                WRITE(20, *) nc, k, nodes(k)%x, nodes(k)%y, nodes(k)%z, nodes(k)%A(1), &
+!!$                     nodes(k)%A(2), nodes(k)%A(3), nodes(k)%phi
+!!$             end IF
+!!$          end IF
+!!$       end DO
+!!$    end IF
+!!$    RETURN
+!!$  end SUBROUTINE testing_write_FE_boundary_values
+end MODULE EMfwd_module
+
+
+
+PROGRAM EM_FORWARD
+  USE EMfwd_module, ONLY: start_EM_modelling
+  USE mpi
+  !USE FORTRAN_matrix_operation, ONLY: test_coocsr
+  IMPLICIT NONE
+  INTEGER :: ierr
+  !!CALL test_coocsr()
+
+  CALL MPI_INIT(ierr)
+  CALL start_EM_modelling()
+
+  CALL MPI_FINALIZE(ierr)
+  !!CALL solve_independent_linearSystem()
+
+CONTAINS
+
+!!$  SUBROUTINE test_MT_halfspace_freq()
+!!$    USE float_precision, ONLY: DPR
+!!$    USE FORTRAN_generic, ONLY: natural_log_spacing
+!!$    USE model_setup_EM, ONLY: reset_frequency, nfreq, global_count
+!!$    IMPLICIT NONE
+!!$
+!!$    INTEGER :: k
+!!$    REAL(DPR) :: f1, f2, freq(nfreq)
+!!$
+!!$    f1= 0.001   ! Hz
+!!$    f2 = 100000.  ! 100 KHz
+!!$
+!!$    CALL natural_log_spacing(SIZE(freq), f1, f2, freq)
+!!$
+!!$    DO k = 1, SIZE(freq)
+!!$       global_count = k
+!!$
+!!$       CALL reset_frequency( freq(k) )
+!!$
+!!$       CALL start_EM_modelling()
+!!$    end DO
+!!$  end SUBROUTINE test_MT_halfspace_freq
+
+end PROGRAM EM_FORWARD

@@ -1,0 +1,5 @@
+# a list of mesh parameters for EM modelling (Name Value), the place of mesh files needs to be specified here.
+nregion            3                          # the region number found in regionMarkFile will take precedence over this value
+regionMarkFile    "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/list_regionMark.txt"        # can include path info
+meshfilepath      "/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_meshes/"     # directory of mesh files
+basefilename      "MT_2D_3layer.1"         # the base part of names of mesh files (i.e., without ".node", ".ele", etc)

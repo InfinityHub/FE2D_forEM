@@ -1,0 +1,15 @@
+# a list of general parameters for EM modelling (format in each line: Name Value)
+    DataType            CM     # 'CM' (complex) or 'RE' (real)
+
+# --data output control
+#    Measurement_file    '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/measurement_sites.node'     # a .node file containing pre-defined measurement sites
+    outputfilepath      '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/FE_out/global/'
+    
+# --- finite element method
+    FEdegree            1   # 1 (linear) or 2 (quadratic)
+    global_FE_search    f   # logical parameter;  "t/T": yes (to use a global FE search algorithm); "f/F": no
+
+# --- linear system solver
+    Iter_solver         f
+    iter_solver_name    ''   # 'GMRES', 'BCGSTAB'
+    solver_verbose      f

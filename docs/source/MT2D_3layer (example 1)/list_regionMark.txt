@@ -1,0 +1,6 @@
+# first line: begins with 'L', then number of uniform conductivity regions
+# subsequent lines: which region, region marker(only integers)
+L  3
+1    10
+2    20
+3    30

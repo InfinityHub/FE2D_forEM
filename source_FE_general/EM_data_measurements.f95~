@@ -1,0 +1,472 @@
+MODULE EM_data_measurements
+  ! Author: Jianbo Long, Mar, 2020
+  !
+  ! Purpose:
+  !   set up synthetic measurement positions for modelling
+  USE float_precision, ONLY: DPR
+  IMPLICIT NONE
+
+  PRIVATE
+  ! for synthetic measurements and visualization
+  INTEGER,PROTECTED  :: nobs = 0
+  INTEGER,PROTECTED  :: nvis = 0
+  INTEGER,PROTECTED  :: nvis1 = 0
+  INTEGER,PROTECTED  :: nvis2 = 0
+  INTEGER,PROTECTED,ALLOCATABLE  :: matri(:)   ! measurement site attribute
+  REAL(DPR),ALLOCATABLE :: conduct_visual(:)
+  REAL(DPR),ALLOCATABLE :: xvis(:), yvis(:), zvis(:)
+  REAL(DPR),ALLOCATABLE :: xobs(:), yobs(:), zobs(:)
+
+  ! public data
+  PUBLIC :: nobs, nvis, nvis1, nvis2, xobs, yobs, zobs, xvis, yvis, zvis, matri,conduct_visual
+  ! public procedures
+  PUBLIC :: get_synthetic_measurement_positions, get_synthetic_visualization_positions
+
+CONTAINS
+  
+  SUBROUTINE paraview_output()
+    USE modelling_parameter, ONLY: modelling, EM_generic
+    IMPLICIT NONE
+    INTEGER :: fid, k
+    fid = 22
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//TRIM(ADJUSTL(EM_generic%SourceType))//'_XYZ_for_Paraview.txt')
+    ! prepared for Paraview visualization
+    DO k = 1, nobs
+       WRITE(fid,*) xobs(k), ',', yobs(k), ',',  zobs(k)
+    end DO
+    CLOSE(fid)
+    RETURN
+  end SUBROUTINE paraview_output
+
+  ! -------------------------------------------
+  ! -------------------------------------------
+
+  SUBROUTINE get_synthetic_measurement_positions()
+    USE FORTRAN_generic, ONLY: linear_spacing, print_warn_msg, print_general_msg
+    USE error_cls
+    USE fileio_mod_Peter, ONLY: fileio_exists, fileio_get_fid, fileio_open_read
+    USE model_setup_EM, ONLY: nodes
+    USE modelling_parameter, ONLY: modelling, EM_generic
+
+    IMPLICIT NONE
+    CHARACTER(LEN=300) :: subroutineTitle = "get_synthetic_measurement_positions"
+    INTEGER :: i, j, k, null, npoint, fid
+    REAL(DPR) :: xstart, xend
+    TYPE(error_type) :: error
+
+    ASSOCIATE( ModelCode => EM_generic%ModelCode, EMsourceType => EM_generic%SourceType) 
+
+      CALL print_general_msg('getting synthetic measurement sites')
+      nobs = 0
+      npoint = SIZE(nodes)
+      IF(ALLOCATED(xobs))  DEALLOCATE(xobs)
+      IF(ALLOCATED(yobs))  DEALLOCATE(yobs)
+      IF(ALLOCATED(zobs))  DEALLOCATE(zobs)
+      IF(ALLOCATED(matri))  DEALLOCATE(matri)
+
+      ! check if there is a pre-defined measurement site file
+      IF( TRIM(ADJUSTL(modelling%measurement_file)) /= '') THEN
+         IF( fileio_exists(TRIM(ADJUSTL(modelling%measurement_file))) ) THEN
+            ! Open file for reading:
+            CALL fileio_get_fid(fid,error)
+            IF (error_check(error)) THEN
+               CALL error_construct(error,ERROR_GENERAL,'EM_data_measurements',TRIM(ADJUSTL(subroutineTitle)),'failed to get fid ')
+               RETURN
+            END IF
+            CALL fileio_open_read(TRIM(ADJUSTL(modelling%measurement_file)),fid,error)
+            IF (error_check(error)) THEN
+               CALL error_pass(error,'EM_data_measurements',TRIM(ADJUSTL(subroutineTitle)))
+               CALL error_report(error)
+               RETURN
+            END IF
+
+            ! first line
+            READ(fid, *) nobs
+            IF( nobs <= 0 ) THEN
+               CALL error_construct(error,ERROR_READ,'EM_data_measurements',TRIM(ADJUSTL(subroutineTitle)),'number of measurement sites <= 0!')
+               CALL error_report(error)
+            END IF
+            ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs), matri(nobs) )
+            IF(modelling%spaceDim == 3) THEN
+               DO k = 1, nobs
+                  READ(fid, *) null, xobs(k), yobs(k), zobs(k), matri(k)
+               end DO
+            ELSEIF(modelling%spaceDim == 2) THEN
+               DO k = 1, nobs
+                  READ(fid, *) null, xobs(k), zobs(k), matri(k)
+               end DO
+               yobs = 0.0
+            END IF
+            CLOSE(fid)
+
+            IF( modelling%WriteXYZ_paraview ) CALL paraview_output()
+            RETURN
+         end IF
+      end IF
+
+      SourceType: IF( TRIM( ADJUSTL(EMSourceType) ) == 'MT' )  THEN
+         !! Take care of multiple profiles/lines
+         SELECT CASE ( TRIM( ADJUSTL(ModelCode) )  )
+
+         CASE ('3D1A_MT')
+            ! ----------- Here for MT 3D(1A) models -----------------
+            !! two profiles : x- and y- lines
+
+            PRINT*, '------DEBUG------ 2 survey lines for MT-3D1A are calculated ......'
+
+            nobs = 800 * 2;  ALLOCATE( xobs(nobs + 200), yobs(nobs + 200), zobs(nobs + 200) )
+            xstart = -4000.0
+            xend = 4000.0
+
+            CALL linear_spacing( nobs/2, xstart, xend, xobs(1: nobs/2) );  yobs(1: nobs/2) = 0.0;  zobs(1: nobs/2) = -0.1
+
+            CALL linear_spacing( nobs/2, -4000.d0, 4000.d0, yobs(1+nobs/2: nobs) )
+
+            xobs(1+nobs/2: nobs) = 0.0;  zobs(1+nobs/2: nobs) = -0.1
+
+
+            ! extra vertical line for test E field:
+            xobs(nobs+1: nobs+100) = 0.0
+            yobs(nobs+1: nobs+100) = 0.0
+
+            CALL linear_spacing( 50, 500.d0, 0.1d0, zobs(nobs+1: nobs+50) )
+            CALL linear_spacing( 50, -0.1d0, -500.d0, zobs(nobs+51: nobs+100) )
+
+            ! extra horizontal line (along x-) to test E,H field:
+            CALL linear_spacing( 100, -1200.d0, 1200.d0, xobs( nobs+101: nobs+200 ) )
+            yobs( nobs+101: nobs+200 ) = 0.0
+            zobs( nobs+101: nobs+200 ) = -1250.0
+            nobs = SIZE(xobs)
+
+            !!nobs = 0
+
+         CASE ('DTM1_MT')
+            ! here for Dublin Test Model 1(DTM-1)
+            ! Measurement sites, originally 59 sites
+
+            PRINT*, '------DEBUG------ 59 sites for MT-DTM1 are calculated ......'
+            nobs = COUNT( nodes%bud == 20 )
+            IF( nobs /= 59 )  THEN
+               PRINT*, 'In <'//TRIM(ADJUSTL(subroutineTitle))//'>'
+               PRINT*, 'The # of measurement sites does not equal to the 59...'
+               print*, 'Detected # from node infor is: ', nobs
+               PRINT*, 'Program terminated by <STOP>'
+               STOP
+            END IF
+
+            ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            j = 0
+            DO i = 1, npoint
+               IF( nodes(i)%bud == 20 ) THEN
+                  j = j + 1
+                  xobs(j) = nodes(i)%x
+                  yobs(j) = nodes(i)%y
+                  zobs(j) = nodes(i)%z
+               end IF
+            end DO
+
+            zobs = -0.1
+
+         CASE ('3D2A_MT')
+            ! here for MT-3D2A model, one survey line is used
+
+            PRINT*, '------DEBUG------ 1 survey line for MT-3D2A calculated ......'
+
+            nobs = 240;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            xstart = -60000.0
+            xend = 60000.0
+
+            CALL linear_spacing( nobs, xstart, xend, xobs(1: nobs) );  yobs(1: nobs) = 0.0;  zobs(1: nobs) = -0.1
+
+         CASE DEFAULT
+
+         END SELECT
+
+
+      ELSEIF(  TRIM( ADJUSTL(EMSourceType) ) == 'DC' )  THEN
+
+         ! possible multiple RHS for the DC case
+
+         nobs = 800;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+         xstart = -10000.0
+         xend = 10000.0
+
+         CALL linear_spacing(nobs, xstart, xend, xobs)
+         yobs = 0.d0;  zobs = 0.d0
+         nobs = SIZE( xobs )
+
+      ELSE       ! the controlled-source case
+
+         SELECT CASE ( TRIM( ADJUSTL(ModelCode) )  )
+
+         CASE ('HyDisk_CSEM','marineBlock_CSEM','BlockWhole_CSEM','WholeSpace_CSEM')
+            PRINT*, '-----DEBUG------ 800 sites at z=0 are designed ......'
+            PRINT*, ''
+
+            nobs = 800;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            xstart = -6500.0  !MINVAL( nodes%x)
+            xend = 6500.0    !MAXVAL( nodes%x)
+            CALL linear_spacing(nobs, xstart, xend, xobs)
+
+            yobs = 0.d0;  zobs = 0.1d0
+
+
+         CASE ('half_CSEM')
+            PRINT*, '-----DEBUG------ 800 sites for halfspace CSEM(HED) are calculated ......'
+            PRINT*, ''
+
+            nobs = 800;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            xstart = -12000.0
+            xend = 12000.0
+            CALL linear_spacing(nobs, xstart, xend, xobs)
+
+            yobs = 0.d0;  zobs = 0.1d0          
+
+
+         CASE ('HED200_half_CSEM')
+            PRINT*, '-----DEBUG--- 12000 sites for halfspace CSEM( with 200 metre long HED) are calculated ......'
+            PRINT*, ''
+
+            nobs = 12000;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            xstart = -12000.0
+            xend = 12000.0
+            CALL linear_spacing(nobs, xstart, xend, xobs)
+
+            yobs = 0.d0;  zobs = 0.1d0
+
+         CASE('block_half_CSEM')
+            PRINT*, '-----DEBUG--- 200 sites for block in halfspace CSEM are calculated ......'
+            PRINT*, ''
+
+            nobs = 200;  ALLOCATE( xobs(nobs), yobs(nobs), zobs(nobs) )
+            xstart = -200.0
+            xend = 1800.0
+            CALL linear_spacing(nobs, xstart, xend, xobs)
+
+            yobs = 0.0;  zobs = 0.1
+         CASE DEFAULT
+            nobs = 0
+         END SELECT
+      END IF SourceType
+
+      IF( nobs == 0 ) THEN
+         CALL print_warn_msg('NO measurement sites are detected for modelling computation !!!')
+      END IF
+      IF( nobs > 0 ) THEN
+         IF( modelling%WriteXYZ_paraview ) CALL paraview_output()
+      END IF
+    end ASSOCIATE
+
+    RETURN
+  END SUBROUTINE get_synthetic_measurement_positions
+
+
+  ! -------------------------------------------
+  ! -------------------------------------------
+
+  SUBROUTINE get_synthetic_visualization_positions( )
+
+    USE FORTRAN_generic, ONLY: meshing_grid_2D
+
+    USE model_setup_EM, ONLY: nodes
+    USE modelling_parameter, ONLY: EM_generic
+    !USE kdtree_build_EM_Aphi, ONLY: find_which_tree_for_point
+
+    IMPLICIT NONE
+
+    !CHARACTER(LEN=300) :: subroutineTitle = "get_synthetic_visualization_positions"
+
+    !INTEGER :: i, k, whichtree, 
+    INTEGER :: npoint
+
+    !REAL(DPR) :: test_point(3)
+
+    ! for visualization
+    INTEGER :: nxs, nys, nzs
+    REAL(DPR) :: xmin_vis, xmax_vis, ymin_vis, ymax_vis, zmin_vis, zmax_vis
+    REAL(DPR),ALLOCATABLE :: x_xz(:), y_xz(:), z_xz(:)
+    REAL(DPR),ALLOCATABLE :: x_xy(:), y_xy(:), z_xy(:)
+    REAL(DPR) :: xdep_vis, ydep_vis, zdep_vis
+
+    LOGICAL :: cond_vis_warning
+
+    ASSOCIATE( ModelCode => EM_generic%ModelCode ) 
+
+      nvis = 0;  nvis1 = 0;  nvis2 = 0
+      xdep_vis = 0.0; ydep_vis = 0.0; zdep_vis = 0.0
+
+      npoint = SIZE(nodes)
+
+      IF(ALLOCATED(xvis))  DEALLOCATE(xvis)
+
+      IF(ALLOCATED(yvis))  DEALLOCATE(yvis)
+
+      IF(ALLOCATED(zvis))  DEALLOCATE(zvis)
+
+      IF(ALLOCATED(conduct_visual))  DEALLOCATE(conduct_visual)
+
+
+      ! -------------------- visualizing points design -----------------
+      ! -------------- XZ plane points -----------------
+      SELECT CASE ( TRIM( ADJUSTL(ModelCode) )  )
+
+      CASE ('3D1A_MT')
+
+         nxs = 0;  nzs = 0;  nys = 0
+      CASE ('3D2A_MT')
+
+         nxs = 0;  nzs = 0;  nys = 0
+      CASE ('HED200_half_CSEM')
+         nxs = 0;  nzs = 0;  nys = 0
+      CASE ('HyDisk_CSEM','marineBlock_CSEM','BlockWhole_CSEM','WholeSpace_CSEM')
+         !!PRINT*,''; PRINT*, '..VISUALIZING: y=0; x= -160 m to 160 m; z = -50 m to 150 m.'
+         xmin_vis = -160.0;  xmax_vis = 160.0
+         zmin_vis = -50.0; zmax_vis = 150.0
+         ydep_vis = 0.0
+         nxs = 90;  nzs = 50;   nys = 1
+
+      CASE ('half_CSEM')
+         xmin_vis = -250.0;  xmax_vis = 250.0
+         zmin_vis = -250.0; zmax_vis = 250.0
+         ydep_vis = 0.0
+         nxs = 38;  nzs = 38;    nys = 1
+      CASE('block_half_CSEM')
+         xmin_vis = 840.0;  xmax_vis = 1120.0
+         zmin_vis = 50.0; zmax_vis = -650.0
+         ydep_vis = 0.0
+         nxs = 38;  nzs = 80;    nys = 1       
+      CASE DEFAULT
+         nxs = 0;  nys = 0;    nzs = 0
+      END SELECT
+
+      nvis1 = nxs * nzs * nys
+      !nvis1 = 0
+
+      ac1: IF( nvis1 > 0 )  THEN
+         ! first group
+         PRINT*,'   >>--1 : get XZ-plane visualization data ....'
+
+         ! section-position here
+         IF( nys > 0 ) THEN
+            ALLOCATE( x_xz(nvis1), y_xz(nvis1), z_xz(nvis1) )
+
+            y_xz = ydep_vis
+
+            CALL meshing_grid_2D(nxs, xmin_vis, xmax_vis, nzs, zmin_vis, &
+                 zmax_vis, x_xz, z_xz )
+         END IF
+      END IF ac1
+
+
+      ! -------------- now xy plane points -----------------
+      SELECT CASE ( TRIM( ADJUSTL(ModelCode) )  )
+
+      CASE ('3D1A_MT')
+         xmin_vis = MINVAL( nodes%x );  xmax_vis = MAXVAL( nodes%x )
+         ymin_vis = MINVAL( nodes%y );  ymax_vis = MAXVAL( nodes%y )
+         zdep_vis = -500.0
+         nxs = 250;  nys = 250;    nzs = 1
+
+      CASE ('3D2A_MT')
+         xmin_vis = -34000.0;  xmax_vis = 34000.0
+         ymin_vis = -34000.0;  ymax_vis = 34000.0
+         zdep_vis = -250.0
+         nxs = 68;  nys = 68;    nzs = 1
+
+      CASE ('HyDisk_CSEM','marineBlock_CSEM','BlockWhole_CSEM','WholeSpace_CSEM')
+         !!PRINT*,'.. z = 100 m,  x = -320 m to 320 m, y = -100 to 100 m.'
+         xmin_vis = -320.0;  xmax_vis = 320.0
+         ymin_vis = -100.0;  ymax_vis = 100.0
+         zdep_vis = 100.0
+         nxs = 180;  nys = 50;    nzs = 1
+
+      CASE ('HED200_half_CSEM')
+         nxs = 0;  nys = 0;    nzs = 0
+      CASE ('half_CSEM')
+         xmin_vis = -250.0;  xmax_vis = 250.0
+         ymin_vis = -250.0;  ymax_vis = 250.0
+         zdep_vis = 50.0
+         nxs = 32;  nys = 32;    nzs = 1
+
+      CASE DEFAULT
+         nxs = 0;  nys = 0;    nzs = 0
+
+      END SELECT
+
+      nvis2 = nxs * nys * nzs
+
+      nvis2 = 0
+
+
+      ac2: IF( nvis2 > 0 )  THEN
+         ! second group
+         PRINT*,'   >>--2: get XY-plane visualization data ....'
+         ALLOCATE( x_xy(nvis2), y_xy(nvis2), z_xy(nvis2) )
+         IF( nzs > 0 ) THEN
+            ! section-depth here
+            z_xy = zdep_vis
+
+            CALL meshing_grid_2D(nxs, xmin_vis, xmax_vis, nys, ymin_vis, &
+                 ymax_vis, x_xy, y_xy )
+         END IF
+      END IF ac2
+
+
+      nvis = nvis1 + nvis2
+
+
+      ! --- during testing --------
+      !nvis = 0
+
+
+      ACC: IF( nvis > 0 ) THEN
+
+         ALLOCATE( xvis(nvis), yvis(nvis), zvis(nvis) )
+         ALLOCATE( conduct_visual(nvis) );  conduct_visual = 0.0
+
+         cond_vis_warning = .FALSE.
+
+         IF( nvis1 > 0 ) THEN
+            xvis(1: nvis1) = x_xz
+            yvis(1: nvis1) = y_xz
+            zvis(1: nvis1) = z_xz
+         END IF
+
+         IF( nvis2 > 0 ) THEN
+            xvis((1+nvis1): nvis) = x_xy
+            yvis((1+nvis1): nvis) = y_xy
+            zvis((1+nvis1): nvis) = z_xy
+         END IF
+
+!!$       DO i = 1, nvis
+!!$
+!!$          k = i
+!!$          test_point = [xvis(k), yvis(k), zvis(k)]
+!!$
+!!$          CALL find_which_tree_for_point(test_point, TRIM(ADJUSTL(ModelCode)), whichtree)
+!!$
+!!$          IF( whichtree >= 1 .AND. whichtree <= MAXVAL(cond) )  THEN
+!!$             conduct_visual( k ) = cond(whichtree)
+!!$          ELSE
+!!$             IF( (cond_vis_warning .EQV. .FALSE.) ) THEN
+!!$                PRINT*,''
+!!$                PRINT*, '--Warning:finding the regional marker for arbitrary point has failed ....'
+!!$                PRINT*, '  Point conductivity for visualization will be random value ...'
+!!$
+!!$                cond_vis_warning = .TRUE.
+!!$             ENDIF
+!!$          END IF
+!!$       end DO
+      END IF ACC
+
+      IF( nvis ==0 )  THEN
+         PRINT*, '---Note: NO visualization sites are detected for post calculation !!! '
+         RETURN
+      END IF
+    end ASSOCIATE
+
+    RETURN
+  END SUBROUTINE get_synthetic_visualization_positions
+
+end MODULE EM_Data_Measurements
+

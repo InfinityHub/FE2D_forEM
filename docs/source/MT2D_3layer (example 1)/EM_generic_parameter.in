@@ -1,0 +1,5 @@
+# a list of general parameters for EM(Name Value)
+freq               0.01   # Only one frequency case, unit Hz
+
+#-- a list of conductivities (unit: S/m), or material property, for different mesh regions     
+condRegionFile     '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/list_regional_cond.txt' 
