@@ -318,7 +318,7 @@ CONTAINS
     REAL(DPR),INTENT(IN) :: a
     !CHARACTER(LEN=256) :: var
     !WRITE(var,FMT="(A)") a
-    PRINT*,"------DEBUG---"//TRIM(msg)//"=", a 
+    PRINT*,"---DEBUG---"//TRIM(msg)//"=", a 
     RETURN
   end SUBROUTINE print_debug_msg_r
   ! ---------------------------------

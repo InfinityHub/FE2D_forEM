@@ -99,7 +99,9 @@ An example template of the file is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/modelling_parameter.in
 
-For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. If the iterative solver parameter ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used.
+For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data type). The parameter ``outputfilepath`` controls where to place all output files from the program. For finite element algorithm configurations, a combination of linear degree (``FEdegree`` is "1") and not using global search (``global_FE_search`` is "f") provides the fastest computation.
+
+For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. To use an iterative solver, the iterative solver parameter ``Iter_solver`` should be set as "t" or "T" (i.e., true) and give ``iter_solver_name`` the value of the chosen iterative solver. If ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used and the string parameter ``iter_solver_name`` can be set as an empty string (i.e., its value is just a pair of single or double quotes). In this case, verbose information of the direct solver can be turned on/off by setting ``solver_verbose`` as "t"/"f".
 
 
 ``EM_generic_parameter.in``

@@ -96,8 +96,13 @@ CONTAINS
   CONTAINS
     SUBROUTINE print_author_info()
       IMPLICIT NONE
+      INTEGER :: timevalues(8)
+      CHARACTER(LEN=30) :: var
+      CHARACTER(LEN=4) :: year
+      CALL DATE_AND_TIME(VALUES=timevalues)
+      WRITE(year, '(I4.4)')  timevalues(1)
       PRINT*,'         General 2-D FE modelling program. (unstructured meshes)      '
-      PRINT*,'        Jianbo Long, Department of Earth Sciences, MUN. 2017-2020.    '
+      PRINT*,'        Jianbo Long, Department of Earth Sciences, MUN. 2017-'//year//'.    '
       PRINT*,'----------------------------------------------------------------------'
       RETURN
     end SUBROUTINE print_author_info

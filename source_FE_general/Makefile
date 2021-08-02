@@ -18,7 +18,8 @@
 # The work directories may need to be modified accordingly.
 MY_DIR = /home/jack/repos/
 # path for codes
-SRC2 = /home/jack/repos/source_FE_general/
+#SRC2 = /home/jack/repos/source_FE_general/
+SRC2 = /media/jack/NewVolume/2020_Ronald_math_project/codes/FE2D_DomainDecop/source_FE_general/
 
 BLD = $(MY_DIR)build_FE_general/
 EXE = $(MY_DIR)exe/
