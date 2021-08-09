@@ -103,7 +103,7 @@ For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data ty
 
 For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. To use an iterative solver, the iterative solver parameter ``Iter_solver`` should be set as "t" or "T" (i.e., true) and give ``iter_solver_name`` the value of the chosen iterative solver. If ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used and the string parameter ``iter_solver_name`` can be set as an empty string (i.e., its value is just a pair of single or double quotes). In this case, verbose information of the direct solver can be turned on/off by setting ``solver_verbose`` as "t"/"f".
 
-For the domain decomposition part, currently the code can solve for either a global solution or location solutions (on subdomains). The choice is made through the parameter ``Domain_mode``: 1 for global solution and 2 for local solutions, as shown in the template file. Before attempting the local solutions, a global solution must be already available. To solve the global domain problem, the boundary values are read from file first. A boundary value file that provides **initial values at all degrees of freedom** (i.e., including both boundary and interior degrees of freedom) is supplied via the string parameter ``BoundaryValueFile``. Details of the boundary value file are discussed in :ref:`label-boundary-file`.
+For the domain decomposition part, currently the code can solve for either a global solution or local solutions (on subdomains). The choice is made through the parameter ``Domain_mode``: 1 for global solution and 2 for local solutions, as shown in the template file. Before attempting the local solutions, a global solution must be already available. To solve the global domain problem, the boundary values are read from file first. A boundary value file that provides **initial values at all degrees of freedom** (i.e., including both boundary and interior degrees of freedom) is supplied via the string parameter ``BoundaryValueFile``. Details of the boundary value file are discussed in :ref:`label-boundary-file`.
 
 
 .. _label-boundary-file:
@@ -171,8 +171,18 @@ An example template is:
 
 The meanings of the parameters here follow exactly the same as those in :ref:`label-cond-file`, except here the information is the assigned markers (integer values) for each region. These integer values should be distinct from each other and should be exactly the same integer markers used when generating the mesh (see :ref:`label-mesh-generation`).
    
-Output files (coming up)
+Output files
 ------------------------
+
+By default, only modelling solutions are written to the disk making the output files. The path where all output files go is set in :ref:`label-modelling-parameter`.
+
+
+
+Running example 1: MT modelling
+===============================
+
+The first example demostrating how to run the code is to model the MT data over a 3-layer domain.
+
 
 Indices and tables (coming up)
 ==============================
