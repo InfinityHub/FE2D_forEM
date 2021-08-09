@@ -27,7 +27,7 @@ CONTAINS
        ALLOCATE( EM_RHS(ndof, 2) )    ! (Ey, Hy)
        ALLOCATE( EM_solution(ndof, 2) )
        EM_RHS = cmpx_zero
-       CALL get_boundary_from_global_solution(EM_RHS(:, 1), EM_RHS(:, 2))
+       CALL get_boundary_from_files_cm_data(EM_RHS(:, 1:2))
     ELSE
        CALL initialize_matrices_gt_RHS()
        CALL print_general_msg('Real-data Right-hand-sides')
@@ -51,27 +51,64 @@ CONTAINS
     INTEGER :: k, null, ndata, fid
 
     CALL print_general_msg('reading boundary values')
-
     fid = 48
-
-    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'All_rad.txt', STATUS = 'OLD')
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%BoundaryValueFile)), STATUS = 'OLD')
     READ(fid, *) ndata
+    IF( SIZE(RHS) /= ndata ) THEN
+       PRINT*, 'data number on file AND size(RHS) not matching !!'
+       PRINT*, "ndata = ", ndata
+       PRINT*, "size(RHS) = ", SIZE(RHS)
+       STOP
+    END IF
     ALLOCATE(rad(ndata))
     DO k = 1, ndata
        READ(fid, *) null, rad(k)
     end DO
+    RHS = rad
     CLOSE(UNIT=fid)
 
     RETURN
   end SUBROUTINE get_boundary_from_files_gt_data
   ! -----------------------------------------------------------------------
-  SUBROUTINE get_boundary_from_global_solution(RHS_Ey, RHS_Hy)
+  SUBROUTINE get_boundary_from_files_cm_data(RHS)
+    USE float_precision, ONLY: DPR, CDPR
+    USE FORTRAN_generic,ONLY: print_general_msg
+    IMPLICIT NONE
+    COMPLEX(CDPR),INTENT(INOUT) :: RHS(:,:)
+    REAL(DPR) :: rec1_re, rec1_im, rec2_re, rec2_im
+    !REAL(DPR),ALLOCATABLE :: x(:), z(:)
+    INTEGER :: k, null, ndata, fid
+
+    CALL print_general_msg('reading boundary values')
+    IF(modelling%Domain_mode == 1) THEN  ! global solution
+       fid = 48
+       OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%BoundaryValueFile)), STATUS = 'OLD')
+       READ(fid, *) ndata
+       IF( SIZE(RHS,1) /= ndata ) THEN
+          PRINT*, 'data number on file AND size(RHS) not matching !!'
+          PRINT*, "ndata = ", ndata
+          PRINT*, "size(RHS) = ", SIZE(RHS,1)
+          STOP
+       END IF
+       DO k = 1, ndata
+          READ(fid, *) null, rec1_re, rec1_im, rec2_re, rec2_im
+          RHS(k, 1) = COMPLEX(rec1_re, rec1_im)
+          RHS(k, 2) = COMPLEX(rec2_re, rec2_im)
+       end DO
+       CLOSE(UNIT=fid)
+    ELSEIF(modelling%Domain_mode == 2) THEN  ! local solutions
+       CALL get_boundary_from_global_solution(RHS)
+    END IF
+    RETURN
+  end SUBROUTINE get_boundary_from_files_cm_data
+  ! -----------------------------------------------------------------------
+  SUBROUTINE get_boundary_from_global_solution(RHS)
     USE float_precision, ONLY: CDPR, DPR
     USE derived_data_module, ONLY: nodes
     USE file_rw, ONLY: read_sol_Ron_MT2D
     USE FORTRAN_generic,ONLY: print_general_msg
     IMPLICIT NONE
-    COMPLEX(CDPR),INTENT(INOUT) :: RHS_Ey(:), RHS_Hy(:) ! local
+    COMPLEX(CDPR),INTENT(INOUT) :: RHS(:,:) ! RHS_Ey(:), RHS_Hy(:) ! local
     COMPLEX(CDPR),ALLOCATABLE :: solEy(:), solHy(:) ! global solutions
     REAL(DPR),ALLOCATABLE :: x(:), z(:)
     INTEGER,ALLOCATABLE :: nodemap(:)
@@ -80,17 +117,17 @@ CONTAINS
     CALL print_general_msg('reading global solutions for DD !')
     CALL read_sol_Ron_MT2D(solEy, solHy, x, z, nodemap )
     ! for debugging
-    IF( SIZE(RHS_Ey) /= SIZE(nodemap) ) THEN
-       PRINT*, 'nodemap AND RHS_Ex not matching !!'
-       PRINT*, "SIZE(RHS_Ey) = ", SIZE(RHS_Ey)
+    IF( SIZE(RHS, 1) /= SIZE(nodemap) ) THEN
+       PRINT*, 'nodemap AND RHS not matching in size !!'
+       PRINT*, "SIZE(RHS) = ", SIZE(RHS,1)
        PRINT*, "SIZE(nodemap) = ", SIZE(nodemap)
        STOP
     END IF
 
-    DO k = 1, SIZE(RHS_Ey)
+    DO k = 1, SIZE(RHS,1)
        IF(nodes(k)%bud == 1) THEN
-          RHS_Ey(k) = solEy( nodemap(k) )
-          RHS_Hy(k) = solHy( nodemap(k) )
+          RHS(k,1) = solEy( nodemap(k) )
+          RHS(k,2) = solHy( nodemap(k) )
        END IF
     END DO
     RETURN

@@ -51,8 +51,8 @@ CONTAINS
 
   SUBROUTINE post_interpolation_CM(nobs, xobs, zobs, func, solution)
     ! FE method over triangular meshes
-    ! Inputs: # of data, 2D locations (x,z), and func component values at the dofs.
-    ! Outputs: func at the measurements.
+    ! Inputs: set of 2D locations (x,z), and func values at the dofs.
+    ! Outputs: func at the chosen locations (which can be different from locations of dofs).
     USE FORTRAN_generic, ONLY: complex_dot_product
     USE mesh2d_discretization, ONLY: ele2node, ele2dof
     USE scalar_FE_kernels_2d, ONLY: which_triag_for_point,&

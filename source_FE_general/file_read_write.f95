@@ -14,7 +14,7 @@ MODULE file_rw
   END INTERFACE write_numerical_result_to_files
 CONTAINS
   SUBROUTINE write_to_files_Ron_MT2D(solEy, solHy)
-    ! for Ron's domain decomposition tests
+    ! for domain decomposition tests
     USE modelling_parameter, ONLY: mesh_par
     IMPLICIT NONE
     INTEGER :: nobs
@@ -38,7 +38,9 @@ CONTAINS
     ELSE
        sufix = "sol"
     END IF
-    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TE_Ron_'//sufix//'.txt')
+
+    ! TE
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TE_'//sufix//'.txt')
     WRITE(fid, *) 'Data NO. & Freq(Hz)',  ' & ', 'position-m ( x, z )',  ' || ', 'sol-Real',  ' & ','sol-Img', &
          ' || ', 'RegionMark',  ' & ','BoundaryMark'
     WRITE(fid, *) nobs
@@ -57,7 +59,7 @@ CONTAINS
     CLOSE(UNIT=fid)
 
     ! TM 
-    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TM_Ron_'//sufix//'.txt')
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TM_'//sufix//'.txt')
     WRITE(fid, *) 'Data NO. & Freq(Hz)',  ' & ', 'position-m ( x, z )',  ' || ', 'sol-Real',  ' & ','sol-Img', &
          ' || ', 'RegionMark',  ' & ','BoundaryMark'
     WRITE(fid, *) nobs
@@ -90,7 +92,7 @@ CONTAINS
 
     fid = 48
 
-    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TE_Ron_sol.txt', STATUS = 'OLD')
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TE_sol.txt', STATUS = 'OLD')
     READ(fid, *)    ! skip header
     READ(fid, *) ndata
     ALLOCATE(x(ndata), z(ndata), solEy(ndata), solHy(ndata))
@@ -110,7 +112,7 @@ CONTAINS
     END IF
 
     ! TM 
-    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TM_Ron_sol.txt', STATUS = 'OLD')
+    OPEN(UNIT=fid, FILE=TRIM(ADJUSTL(modelling%outputfilepath))//'MT2D_TM_sol.txt', STATUS = 'OLD')
     READ(fid, *)    ! skip header
     READ(fid, *) ndata
     DO k = 1, ndata

@@ -30,7 +30,7 @@ To run the code, follow these steps:
    Compile the code using the given Makefile. Make sure the required libraries are installed first. For details about how to compile the code, see :ref:`label-section-compile` below.
    
 **Step 2**:
-   Generate the mesh for the given 2-D problem. To do this, it is recommended to use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files, which are then provided to the code as part of input files.
+   Generate the mesh for the given 2-D problem. To do this, it is recommended to use the external program `Triangle <https://www.cs.cmu.edu/~quake/triangle.html>`_ to generate the mesh files needed as part of input files for the code.
    
 **Step 3**:
    Specify the modelling parameters (e.g., MT frequency). Use the templates of input files to make sure all required parameters are provided in these files. The details of input files are discussed in :ref:`label-input-files`. Note that the code requires **one special file** be passed to the (running) program as an argument during the running; that special file itself contains information of all other input files. For example:

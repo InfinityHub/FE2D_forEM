@@ -12,7 +12,7 @@ MODULE modelling_parameter
      ! Output file control
      CHARACTER(LEN=PATHLEN):: measurement_file
      CHARACTER(LEN=PATHLEN):: outputfilepath
-     !the reference path/directory is the true parent directory
+     !the reference path/directory is the true top directory
      CHARACTER(LEN=PATHLEN):: reference_path
      ! Finite element
      LOGICAL :: global_FE_search
@@ -21,6 +21,9 @@ MODULE modelling_parameter
      LOGICAL  :: Iter_solver      !  1: Iterative solvers; otherwise direct solvers
      CHARACTER(LEN=8)   :: iter_solver_name  ! GMRES, BCGSTAB
      LOGICAL  :: solver_verbose              ! if output info
+     ! domain decomposition
+     INTEGER :: Domain_mode   ! 1: only global solution; 2: only local solutions; 3: both
+     CHARACTER(LEN=PATHLEN):: BoundaryValueFile
   end type modelling_para_type
 
   TYPE mesh_para_type
@@ -70,6 +73,8 @@ CONTAINS
     modelling_para%Iter_solver = .FALSE.
     modelling_para%iter_solver_name = 'NULL'
     modelling_para%solver_verbose = .FALSE.
+    modelling_para%Domain_mode = 0
+    modelling_para%BoundaryValueFile = ''
   end SUBROUTINE modelling_para_clear
   ! ---------------------------------------------
   ! ---------------------------------------------
@@ -86,6 +91,8 @@ CONTAINS
        PRINT*, "modelling_para%iter_solver_name  = ", modelling_para%iter_solver_name
     END IF
     PRINT*, "modelling_para%solver_verbose    = ", modelling_para%solver_verbose
+    PRINT*, "modelling_para%Domain_mode    = ", modelling_para%Domain_mode
+    PRINT*, "modelling_para%BoundaryValueFile = ", modelling_para%BoundaryValueFile
   end SUBROUTINE Modelling_Para_Print
 
   ! ---------------------------------------------
@@ -226,6 +233,10 @@ CONTAINS
           CALL error_70()
           IF (error_check(error)) RETURN
        END IF
+    ELSE IF (t1(1:12)=='domain_mode ') THEN
+       READ(t2,FMT=*,IOSTAT=ierr) modelling%Domain_mode
+    ELSE IF (t1(1:18)=='boundaryvaluefile ') THEN
+       modelling%BoundaryValueFile = t2
     ELSE
        ok = .FALSE.
     END IF
