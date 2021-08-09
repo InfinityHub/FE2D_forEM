@@ -13,3 +13,6 @@
     Iter_solver         f
     iter_solver_name    ''   # 'GMRES', 'BCGSTAB'
     solver_verbose      f
+# --- domain decomposition
+    Domain_mode      1   # 1 (global solution) or 2 (subdomain solutions)
+    BoundaryValueFile   '/media/jack/NewVolume/3DEM_Jianbo_test_data/MT2D_3layer/MT_bc.txt'   # file containing global boundary values
