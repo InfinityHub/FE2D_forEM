@@ -103,6 +103,22 @@ For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data ty
 
 For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. To use an iterative solver, the iterative solver parameter ``Iter_solver`` should be set as "t" or "T" (i.e., true) and give ``iter_solver_name`` the value of the chosen iterative solver. If ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used and the string parameter ``iter_solver_name`` can be set as an empty string (i.e., its value is just a pair of single or double quotes). In this case, verbose information of the direct solver can be turned on/off by setting ``solver_verbose`` as "t"/"f".
 
+For the domain decomposition part, currently the code can solve for either a global solution or location solutions (on subdomains). The choice is made through the parameter ``Domain_mode``: 1 for global solution and 2 for local solutions, as shown in the template file. Before attempting the local solutions, a global solution must be already available. To solve the global domain problem, the boundary values are read from file first. A boundary value file that provides **initial values at all degrees of freedom** (i.e., including both boundary and interior degrees of freedom) is supplied via the string parameter ``BoundaryValueFile``. Details of the boundary value file are discussed in :ref:`label-boundary-file`.
+
+
+.. _label-boundary-file:
+
+``Boundary Value File``
+^^^^^^^^^^^^^^^^^^^^^^^
+
+An example of the boundary file is:
+
+   .. literalinclude:: /MT2D_3layer (example 1)/MT_bc.txt
+		       
+In this file, the format follows a .node file (see mesh file discussions in :ref:`label-mesh-generation`) and there should be no comments. The first line has only one integer value, which is the number of records in the rest of the file. These records list the initial values of the function that is solved in the problem at all nodal positions (In 2-D domains, the nodes in the mesh are usually the positions of degrees of freedom). The order of these rows/records must follow exactly the same as in the .node file.
+
+The first column is the index. For MT problems, additional 4 columns are provided in this file, as seen in this example. The first two columns list the **real** and **imaginary** parts of the complex-valued function in TE mode. The last two columns list the complex values in TM mode. If just one particular mode equation needs to be solved (by default, both equations are solved in the code), then simply supply the corresponding boundary values with zeros. However, all 4 columns of values are still required in this file.
+
 
 ``EM_generic_parameter.in``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
