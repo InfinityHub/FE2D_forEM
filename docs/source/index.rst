@@ -22,6 +22,7 @@ Welcome to FE2D_DomainDecop's documentation!
     :depth: 3
 
 .. Note::
+   
    Due to a technical problem from Readthedocs, the usual webpage search by ``ctrl+f`` for keywords on this page is not functioning properly. However, the quick search bar at the top of this page works fine. Also, ``ctrl+f`` search can be used in the PDF version of this documentation.
        
     
@@ -54,7 +55,7 @@ Compilation
 To compile the FORTRAN code, use the **makefile** provided in the source files. The compilation has been mostly tested on Linux like systems. Nevertheless, the process is the same for other operating systems. The Makefile is likely to be modified so that the paths to all source code files and libraries are correctly set on a local machine. Before compiling, make sure the following tools are installed:
 
    #. FORTRAN compiler: ``gfortran`` and ``ifort`` are good options.
-   #. MUMPS solver: this is a direct solver for matrix equations (also see :ref:`label-modelling-parameter`). For download and installation of MUMPS, please see its `manual here <http://mumps.enseeiht.fr/>`_. Typically, its dependencies, such as `BLAS <http://www.netlib.org/>`_, `LAPACK <http://www.netlib.org/lapack/index.html>`_ and `SCOTCH <https://www.labri.fr/perso/pelegrin/scotch/>`_, need to be installed first. The installation guide of MUMPS is an excellent reference for all details of installing. Once MUMPS is installed, modify the makefile to make sure the compiler can find all these libraries. MUMPS version 5.3.3 has been used in the current FORTRAN code here. Since MUMPS is contantly developed and maintained by its developers, this version is recommended to install, but any subsequent version of MUMPS should work as well. Earlier versions of MUMPS **are not recommended** to run this code. When a newer version of MUMPS is installed on your machine, the FORTRAN code may need to be modified.
+   #. MUMPS solver: this is a direct solver for matrix equations (also see :ref:`label-modelling-parameter`). For download and installation of MUMPS, please see its `manual here <http://mumps.enseeiht.fr/>`_. Typically, its dependencies, such as `BLAS <http://www.netlib.org/>`_, `LAPACK <http://www.netlib.org/lapack/index.html>`_ and `SCOTCH <https://www.labri.fr/perso/pelegrin/scotch/>`_, need to be installed first. The installation guide of MUMPS is an excellent reference for all details of installing. Once MUMPS is installed, modify the makefile to make sure the compiler can find all these libraries. MUMPS version 5.3.3 has been used in the current FORTRAN code here. Since MUMPS is contantly developed and maintained by its developers, this version is recommended to install, but any subsequent version of MUMPS should work as well. Earlier versions of MUMPS **are not recommended** to use to run this code. When a newer version of MUMPS is installed on your machine, the FORTRAN code may need to be modified.
 
 
 .. _label-mesh-generation:
@@ -107,7 +108,7 @@ For MT problems, always choose ``DataType`` as "CM" (i.e, complex-valued data ty
 
 For the matrix equation solver, two Krylov iterative methods, GMRES and BCGSTAB (Bi-CG stabilized), are provided here. To use an iterative solver, the iterative solver parameter ``Iter_solver`` should be set as "t" or "T" (i.e., true) and give ``iter_solver_name`` the value of the chosen iterative solver. If ``Iter_solver`` is "f" (i.e., false), then a direct solver will be used and the string parameter ``iter_solver_name`` can be set as an empty string (i.e., its value is just a pair of single or double quotes). In this case, verbose information of the direct solver can be turned on/off by setting ``solver_verbose`` as "t"/"f".
 
-For the domain decomposition part, currently the code can solve for either a global solution or local solutions (on subdomains). The choice is made through the parameter ``Domain_mode``: 1 for global solution and 2 for local solutions, as shown in the template file. Before attempting the local solutions, a global solution must be already available. To solve the global domain problem, the boundary values are read from file first. A boundary value file that provides **initial values at all degrees of freedom** (i.e., including both boundary and interior degrees of freedom) is supplied via the string parameter ``BoundaryValueFile``. Details of the boundary value file are discussed in :ref:`label-boundary-file`.
+For the domain decomposition part, currently the code can solve for either a global solution or local solutions (on subdomains). The choice is made through the parameter ``Domain_mode``: 1 for global solution and 2 for local solutions, as shown in the template file. Before attempting the local solutions, a global solution must be already available. To solve the global domain problem, the boundary values are read from file first. A boundary value file that provides **initial values at all degrees of freedom** (i.e., including both boundary and interior degrees of freedom) is supplied via the string parameter ``BoundaryValueFile``. Details of the boundary value file are discussed in :ref:`label-boundary-file`. When ``Domain_mode`` is set to be 2 (i.e., to solve for local solutions), the value of ``BoundaryValueFile`` will be ignored.
 
 
 .. _label-boundary-file:
@@ -183,13 +184,27 @@ Output files
 By default, only modelling solutions are written to the disk making the output files. The path where all output files go is set in :ref:`label-modelling-parameter`.
 
 
+.. _label-domain-partition:
+
+Domain partition (coming up)
+===============================
+
+
+
+
 
 .. _label-run-example1:
 
 Running example 1: MT modelling
 ===============================
 
-The first example demostrating how to run the code is to model the MT data over a 3-layer domain.
+The first example demostrating how to run the code is to simulate the MT data over a 3-layer conductivity model, which is illustrated in the following diagram:
+
+.. figure:: /MT2D_3layer (example 1)/MT2D_3layer.pdf
+
+	    This is my caption for this figure.
+
+	    
 
 
 Indices and tables (coming up)
