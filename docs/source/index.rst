@@ -115,9 +115,11 @@ An example of the boundary file is:
 
    .. literalinclude:: /MT2D_3layer (example 1)/MT_bc.txt
 		       
-In this file, the format follows a .node file (see mesh file discussions in :ref:`label-mesh-generation`) and there should be no comments. The first line has only one integer value, which is the number of records in the rest of the file. These records list the initial values of the function that is solved in the problem at all nodal positions (In 2-D domains, the nodes in the mesh are usually the positions of degrees of freedom). The order of these rows/records must follow exactly the same as in the .node file.
+In this file, the format follows a .node file (see mesh file discussions in :ref:`label-mesh-generation`) and there should be no comments. The first line has only one integer value (e.g., "2000" here), which is the number of records in the rest of the file. These records list the initial values of the function that is solved in the problem at **all nodal positions** (in 2-D domains, the nodes in the mesh are usually the positions of degrees of freedom). The order of these rows/records must follow exactly the same as in the .node file.
 
-The first column is the index. For MT problems, additional 4 columns are provided in this file, as seen in this example. The first two columns list the **real** and **imaginary** parts of the complex-valued function in TE mode. The last two columns list the complex values in TM mode. If just one particular mode equation needs to be solved (by default, both equations are solved in the code), then simply supply the corresponding boundary values with zeros. However, all 4 columns of values are still required in this file.
+The first column data is the indexes. For MT problems, additional 4 columns of data are provided in this file, as seen in the above template file. The first two columns list the **real** and **imaginary** parts of the complex-valued function in TE mode. The last two columns list the initial complex values in TM mode (again, these initial values contain the boundary values and non-boundary values). If just one particular mode equation needs to be solved (by default, both equations are solved in the code), then simply supply the corresponding boundary values with zeros. However, all 4 columns of data values are still required in this file.
+
+A convenient way to prepare this boundary value file is to read the .node file generated from meshing, in which all boundary nodes can be marked, assign desired boundary values, and write the results to this file. For example, all boundary nodes are marked by "1" and interior nodes are marked by "0" in the example mesh files for  :ref:`label-run-example1`.
 
 
 ``EM_generic_parameter.in``
@@ -177,6 +179,8 @@ Output files
 By default, only modelling solutions are written to the disk making the output files. The path where all output files go is set in :ref:`label-modelling-parameter`.
 
 
+
+.. _label-run-example1:
 
 Running example 1: MT modelling
 ===============================
