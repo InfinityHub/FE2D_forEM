@@ -90,6 +90,7 @@ This special file in the above example has five string parameters (i.e., paramet
    * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
    * ``input_EM_generic``: its value is a file name; that file contains general parameters related to EM problems (MT is a special case of EM).
    * ``input_mesh``: its value is a file name; that file contains information of mesh files used by the code.
+   
    .. * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
 All paths and file names should be double or single quoted.
@@ -200,10 +201,10 @@ Running example 1: MT modelling
 
 The first example demostrating how to run the code is to simulate the MT data over a 3-layer conductivity model, which is illustrated in the following diagram:
 
-   .. figure:: ./MT2D_3layer (example 1)/mesh_files/MT2D_3layer.pdf
-       :scale: 60 %
+   .. figure:: /MT2D_3layer (example 1)/mesh_files/MT_2D_3layer.pdf
+      :scale: 60 %
 
-       This is my caption for this figure.
+      This is my caption for this figure.
 
 To solve for the MT equations for both TE and TM modes on the global domain, these steps can be followed:
   #. Prepare
