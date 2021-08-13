@@ -204,7 +204,7 @@ The first example demostrating how to run the code is to simulate the MT data ov
    .. image:: /MT2D_3layer (example 1)/mesh_files/example1.png
       :scale: 60 %
 
-      This is my caption for this figure.
+This is my caption for this figure.
 
 To solve for the MT equations for both TE and TM modes on the global domain, these steps can be followed:
   #. Prepare
