@@ -6,7 +6,8 @@
 version: 2
 
 # Build documentation in the docs/ directory with Sphinx
-# sphinx.builder options: html (default), dirhtml, singlehtml
+# sphinx.builder common options: html (default), dirhtml, singlehtml
+# see https://www.sphinx-doc.org/en/master/man/sphinx-build.html for details
 sphinx:
    builder: dirhtml
    configuration: docs/source/conf.py
