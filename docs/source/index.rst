@@ -201,7 +201,7 @@ Running example 1: MT modelling
 
 The first example demostrating how to run the code is to simulate the MT data over a 3-layer conductivity model, which is illustrated in the following diagram:
 
-   .. figure:: ./MT2D_3layer (example 1)/mesh_files/example1.png
+   .. image:: /MT2D_3layer (example 1)/mesh_files/example1.png
       :scale: 60 %
 
       This is my caption for this figure.
