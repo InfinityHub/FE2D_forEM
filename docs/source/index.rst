@@ -223,6 +223,7 @@ To solve for the MT equations for both TE and TM modes on the global domain, the
   #. Prepare all input files based on the mesh and modelling parameters. Most introduction of the input files is actually based on this example. Refer to the details of every individual input file about setting each parameter. A good practice is to place all input files of running parameters into one directory and put all mesh files into another. Also prepare a new directory for output files from the running. On operating systems other than Linux-like systems, the output directory specified in the input files may not be created successfully. In this case, one can just manually create the directory first.
 
   #. Once the FORTRAN program is compiled, open a terminal and execute the program like:
+     
      .. code-block::
 
         >>> FE2D -iFWD_input.dat
