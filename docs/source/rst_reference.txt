@@ -1,2 +1,6 @@
 For how to use rst (reStructuredText) in preparation of documentation, see for example
 https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
+
+Quick notes:
+
+2021/08/: File inclusion directives can have spaces in file paths; while figure/image directives need to use escape ('\') before any spaces.
