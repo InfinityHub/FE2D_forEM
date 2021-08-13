@@ -220,7 +220,14 @@ To solve for the MT equations for both TE and TM modes on the global domain, the
 
         Triangle mesh of the 2-D 3-layer model.
 
-  #. Prepare all input files based on the mesh and modelling parameters. Most introduction of the input files is actually based on this example. Refer to the details of every individual input file about setting each parameter.
+  #. Prepare all input files based on the mesh and modelling parameters. Most introduction of the input files is actually based on this example. Refer to the details of every individual input file about setting each parameter. A good practice is to place all input files of running parameters into one directory and put all mesh files into another. Also prepare a new directory for output files from the running. On operating systems other than Linux-like systems, the output directory specified in the input files may not be created successfully. In this case, one can just manually create the directory first.
+
+  #. Once the FORTRAN program is compiled, open a terminal and execute the program like:
+     .. code-block::
+
+        >>> FE2D -iFWD_input.dat
+   
+    Again, "FE2D" is assumed to be the name of the compiled FORTRAN program, "FWD_input.dat" is assumed to be the name of the special input file, and "-i" is the necessary flag to specify the name of the input file.     
 
 Indices and tables (coming up)
 ==============================
