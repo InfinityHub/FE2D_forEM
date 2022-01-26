@@ -23,7 +23,7 @@ Welcome to FE2D_DomainDecop's documentation!
 
 .. Note::
    
-   Due to a technical problem from Readthedocs, the usual webpage search by ``ctrl+f`` for keywords on this page is not functioning properly. However, the quick search bar at the top of this page works fine. Also, ``ctrl+f`` search can be used in the PDF version of this documentation.
+   Due to a technical problem from Readthedocs, the usual webpage search by ``ctrl+f`` for keywords on this page **may not** function properly. However, the quick search bar at the top of this page should work fine. Also, ``ctrl+f`` search can be used in the PDF version of this documentation.
        
     
 Get started
@@ -86,7 +86,7 @@ As we can see, a general rule is that any texts after "#" (shown here), "%", or 
 
 This special file in the above example has 4 string parameters (i.e., parameter value should be a string) and all parameter names are case-sensitive:
 
-   * ``input_path``: the path for all other input files defined here, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input_modelling`` should be found using this path.
+   * ``input_path``: the path for all other input files **defined here**, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input_modelling`` should be found using this path.
    * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
    * ``input_EM_generic``: its value is a file name; that file contains general parameters related to EM problems (MT is a special case of EM).
    * ``input_mesh``: its value is a file name; that file contains information of mesh files used by the code.
@@ -209,7 +209,7 @@ The first example demostrating how to run the code is to simulate the MT data ov
    .. figure:: /MT2D_3layer\ (example\ 1)/mesh_files/MT_2D_3layer.pdf
       :scale: 50 %
 
-      A diagram of the 3-layer MT conductivity model.
+      *A diagram of the 3-layer MT conductivity model*.
 
 To solve for the MT equations for both TE and TM modes on the global domain, these steps can be followed:
 
@@ -218,7 +218,7 @@ To solve for the MT equations for both TE and TM modes on the global domain, the
      .. figure:: /MT2D_3layer\ (example\ 1)/mesh_files/example1.png
         :scale: 50 %
 
-        Triangle mesh of the 2-D 3-layer model.
+        *Triangle mesh of the 2-D 3-layer model.*
 
   #. Prepare all input files based on the mesh and modelling parameters. Most introduction of the input files is actually based on this example. Refer to the details of every individual input file about setting each parameter. A good practice is to place all input files of running parameters into one directory and put all mesh files into another. Also prepare a new directory for output files from the running. On operating systems other than Linux-like systems, the output directory specified in the input files may not be created successfully. In this case, one can just manually create the directory first.
 
