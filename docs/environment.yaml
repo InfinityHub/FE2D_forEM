@@ -1,5 +1,5 @@
-# File: docs/environment.yaml
-# This is the configuration file for Conda environment (see .readthedocs.yaml for details)
+# File: FE2D_DomainDecop/docs/environment.yaml
+# This is the configuration file for Conda environment (see FE2D_DomainDecop/.readthedocs.yaml for details)
 # Defining the exact version will make sure things don't break
 name: docs
 channels:
