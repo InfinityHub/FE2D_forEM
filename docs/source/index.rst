@@ -82,9 +82,9 @@ This is the special file passed to the program when running the code. A template
 
    .. literalinclude:: /MT2D_3layer (example 1)/FWD_input.dat
 
-As we can see, a general rule is that any texts after "#" are considered as comments. The information in the file is listed in a "**Name Value**" format: "**Name**" is the parameter name recognized by the code and is not allowed to change; and "**Value**" is the value of that parameter. There should be at least a space between "**Name**" and "**Value**".
+As we can see, a general rule is that any texts after "#" (shown here), "%", or "!" are considered as comments. The information in the file is listed in a "**Name Value**" format: "**Name**" is the parameter name recognized by the code and is not allowed to change (it is also case-sensitive); and "**Value**" is the value of that parameter. There should be at least a space between "**Name**" and "**Value**". There can also be white spaces before "**Name**".
 
-This special file in the above example has five string parameters (i.e., parameter value should be a string) and all parameter names are case-sensitive:
+This special file in the above example has 4 string parameters (i.e., parameter value should be a string) and all parameter names are case-sensitive:
 
    * ``input_path``: the path for all other input files defined here, for example, the file ``modelling_parameter.in`` defined as the value to the parameter   ``input_modelling`` should be found using this path.
    * ``input_modelling``: its value is a file name; that file contains general modelling parameters and their values.
@@ -93,7 +93,7 @@ This special file in the above example has five string parameters (i.e., paramet
    
    .. * ``input_MT``: its value is a file name; that file contains all necessary modelling parameters that are specific to MT.
 
-All paths and file names should be double or single quoted.
+All paths and file names should be double or single quoted. In principle, relative paths should work; however, this has only been tested on Linux-like operating systems. If relative paths of files do not work, try using absolute paths.
 
 
 .. _label-modelling-parameter:
